@@ -209,32 +209,42 @@ export function kick() {
   kickTimer = setTimeout(() => { kickTimer = null; tick() }, 200)
 }
 
+// Shared by the PR poll and the Inbox merge action; idempotent so a merge seen by both is handled once.
+export function markMerged(task_id) {
+  const t = getTask(task_id)
+  if (t.merged) return
+  setTask(t.id, { merged: 1 })
+  log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
+  for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
+  const left = get('SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0', t.order_id).n
+  if (!left && getOrder(t.order_id).status !== 'done') {
+    setOrder(t.order_id, { status: 'done' })
+    log(t.project_id, 'order', 'Order done: every PR merged', { order_id: t.order_id })
+  }
+}
+
+export function markOnboarded(project_id) {
+  const p = getProject(project_id)
+  if (p.onboarding_status === 'done') return
+  update('projects', p.id, { onboarding_status: 'done' })
+  emit('project', p.id, getProject(p.id))
+  log(p.id, 'merge', `Onboarding PR #${p.onboarding_pr} merged`)
+  for (const i of all(`SELECT id FROM inbox WHERE project_id = ? AND kind = 'merge' AND task_id IS NULL AND order_id IS NULL AND status = 'open'`, p.id)) resolveInbox(i.id)
+}
+
 let polling = false
 async function poll() {
   if (polling) return
   polling = true
   try {
     for (const t of all('SELECT * FROM tasks WHERE pr_number IS NOT NULL AND merged = 0')) {
-      const project = getProject(t.project_id)
       try {
-        if ((await prState(project, t.pr_number)).state !== 'MERGED') continue
-        setTask(t.id, { merged: 1 })
-        log(project.id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
-        for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
-        const left = get('SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0', t.order_id).n
-        if (!left && getOrder(t.order_id).status !== 'done') {
-          setOrder(t.order_id, { status: 'done' })
-          log(project.id, 'order', 'Order done: every PR merged', { order_id: t.order_id })
-        }
+        if ((await prState(getProject(t.project_id), t.pr_number)).state === 'MERGED') markMerged(t.id)
       } catch (e) { console.error('pr poll', t.id, e.message) }
     }
     for (const p of all(`SELECT * FROM projects WHERE onboarding_status = 'pr_open' AND onboarding_pr IS NOT NULL`)) {
       try {
-        if ((await prState(p, p.onboarding_pr)).state !== 'MERGED') continue
-        update('projects', p.id, { onboarding_status: 'done' })
-        emit('project', p.id, getProject(p.id))
-        log(p.id, 'merge', `Onboarding PR #${p.onboarding_pr} merged`)
-        for (const i of all(`SELECT id FROM inbox WHERE project_id = ? AND kind = 'merge' AND task_id IS NULL AND order_id IS NULL AND status = 'open'`, p.id)) resolveInbox(i.id)
+        if ((await prState(p, p.onboarding_pr)).state === 'MERGED') markOnboarded(p.id)
       } catch (e) { console.error('onboarding poll', p.id, e.message) }
     }
   } finally { polling = false }

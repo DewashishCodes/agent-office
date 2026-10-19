@@ -8,7 +8,7 @@ import { killProject, tokensToday, projectTokensToday } from './runner.js'
 import { repoInfo, mergePR } from './github.js'
 import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick } from './scheduler.js'
+import { start, kick, markMerged, markOnboarded } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 
 if (!process.env.OWNER_TOKEN) {
@@ -312,13 +312,10 @@ app.post('/api/inbox/:id/action', async (req, res) => {
     if (item.task_id) {
       const t = found(getTask(item.task_id), 'task')
       await mergePR(p, found(t.pr_number, 'pull request'))
-      setTask(t.id, { merged: 1 })
-      log(p.id, 'merge', `Merged PR #${t.pr_number}: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
+      markMerged(t.id)
     } else {
       await mergePR(p, found(p.onboarding_pr, 'onboarding pull request'))
-      update('projects', p.id, { onboarding_status: 'done' })
-      emit('project', p.id, getProject(p.id))
-      log(p.id, 'merge', `Merged onboarding PR #${p.onboarding_pr}`, { link: item.link })
+      markOnboarded(p.id)
     }
   } else if (key === 'question:answer') {
     background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${str(text, 'text')}`))
