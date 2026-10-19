@@ -23,6 +23,8 @@ Rules for everyone:
 - `addMessage(project_id, role, text, order_id?)`, `addInbox(project_id, kind, title, {body, link, order_id, task_id})`, `resolveInbox(id)`
 - `now()` returns `'YYYY-MM-DD HH:MM:SS'` (UTC, same as SQLite datetime('now')).
 
+`server/rules.js` (Brain): pure helpers parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle. No imports, tests use it directly.
+
 `server/roster.js`: `TEMPLATES`, `template(role)`, `createAgent(project_id, fields)`, `seedRoster(project_id)`.
 
 The schema is at the top of db.js. Read it; it is the data contract for the API and the UI too.
@@ -56,7 +58,7 @@ tokensToday(agent_id) -> number         // sum input+output tokens of runs start
 projectTokensToday(project_id) -> number
 runningCount(agent_id) -> number        // runs with status 'running' for this agent
 ```
-How it runs: `spawn('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'project', '--strict-mcp-config', '--model', model, '--effort', effort, '--permission-mode', permissionMode, ...])`, prompt written to stdin. `--setting-sources project` keeps the owner's personal hooks and plugins out of agent sessions.
+How it runs: `spawn('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'project', '--strict-mcp-config', '--model', model, '--effort', effort, '--permission-mode', permissionMode, ...])`, prompt written to stdin, system prompt passed with `--append-system-prompt-file` (Windows command lines cap at about 32k chars). Clone-level git ops in github.js run through one serial queue so parallel agents never race on git lock files. `--setting-sources project` keeps the owner's personal hooks and plugins out of agent sessions.
 
 stream-json lines (one JSON object per line): `type:'system', subtype:'init'` has `session_id`; `type:'assistant'` has `message.content[]` with `{type:'text'}` and `{type:'tool_use', name, input}`; `type:'rate_limit_event'` has `rate_limit_info.unifiedWindows.five_hour.utilization`; the final `type:'result'` line has `result` (final text), `is_error`, `session_id`, `total_cost_usd`, `usage.{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}`. Count input_tokens as input + cache_creation (cache reads are cheap; store them nowhere).
 
