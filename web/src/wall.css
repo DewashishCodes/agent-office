@@ -1,0 +1,58 @@
+/* Wall: live agent tiles, a rail for orders, permissions and crew messages. */
+.wall { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; }
+.tiles { display: grid; gap: 12px; grid-template-columns: 1fr; align-content: start; }
+.rail { display: flex; flex-direction: column; gap: 12px; }
+@media (min-width: 900px) {
+  .wall { display: grid; grid-template-columns: 1fr 320px; align-items: start; }
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+  .rail { position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow: auto; }
+}
+
+.tile { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tile.expanded { grid-column: 1 / -1; }
+.tile-head { display: flex; gap: 10px; align-items: center; }
+.tile-head .title { color: inherit; text-decoration: none; }
+.tile-head .title:hover { color: var(--accent); }
+.meter { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--accent); }
+.meter span.hot { background: var(--err); }
+.badge.s-waiting, .badge.s-paused, .badge.s-handed_off { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+
+.transcript {
+  display: flex; flex-direction: column; gap: 4px; height: 300px; overflow: auto; padding: 8px;
+  background: var(--surface-2); border-radius: 8px; font-size: 13px; overscroll-behavior: contain;
+}
+.transcript.tall { height: calc(100vh - 300px); min-height: 360px; }
+.transcript.empty-t { display: grid; place-items: center; color: var(--muted); }
+.ev { overflow-wrap: anywhere; }
+.ev details > summary { cursor: pointer; list-style: none; min-height: 24px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev details > summary::-webkit-details-marker { display: none; }
+.ev.say { white-space: pre-wrap; }
+.ev.tool summary { color: var(--accent); }
+.ev.tool-result summary, .ev.prompt summary { color: var(--muted); }
+.ev.bad summary, .ev.result.bad { color: var(--err); }
+.ev.owner { padding: 6px 8px; border-radius: 6px; background: var(--accent-soft); }
+.ev.owner .who { font-weight: 700; color: var(--accent); }
+.ev.note { color: var(--muted); font-style: italic; }
+.ev.ask { color: var(--warn); font-weight: 600; }
+.ev.result { display: flex; justify-content: space-between; gap: 8px; border-top: 1px dashed var(--border); padding-top: 4px; font-size: 12px; font-weight: 600; }
+.ev.live-text { opacity: .8; }
+.ev code, .crew-feed code { font-family: var(--mono); font-size: 12px; background: var(--surface); padding: 0 4px; border-radius: 4px; }
+pre.code {
+  margin: 4px 0; padding: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12px/1.4 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+}
+
+.permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.crew-feed .pill { margin-left: 4px; }
+.msg.system .bubble { background: transparent; border-style: dashed; font-size: 14px; color: var(--muted); }
+
+/* Command: orders strip above the chat */
+.orders-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.order-chip { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; max-width: 240px; padding: 8px 10px; color: inherit; text-decoration: none; }
+.order-chip .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.wait { color: var(--warn); }
+
+@media (min-width: 900px) {
+  .tab.wall-tab { order: -1; }
+}

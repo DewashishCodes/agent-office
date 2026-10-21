@@ -21,7 +21,7 @@ export default function Inbox({ pid }) {
   )
 }
 
-const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure' }
+const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
 
 function Item({ i }) {
   const [text, setText] = useState('')
@@ -64,6 +64,13 @@ function Item({ i }) {
         <div className="actions">
           <ConfirmButton variant="primary" confirm="Squash and merge" disabled={busy} onConfirm={() => act('merge')}>Merge</ConfirmButton>
           <Button variant="ghost" disabled={busy} onClick={() => act('dismiss')}>Dismiss</Button>
+        </div>
+      )}
+      {open && i.kind === 'permission' && (
+        <div className="actions">
+          <Button variant="primary" disabled={busy} onClick={() => act('allow')}>Allow</Button>
+          <Button disabled={busy} onClick={() => act('deny')}>Deny</Button>
+          <a className="btn ghost" href="#/wall">See on Wall</a>
         </div>
       )}
       {open && i.kind === 'failure' && (

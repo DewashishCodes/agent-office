@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
 
-const ROLES = ['planner', 'frontend', 'backend', 'reviewer', 'qa', 'custom']
+const OPEN = ['planning', 'awaiting_approval', 'in_progress', 'ready_to_merge']
 
 export default function Command({ pid, running }) {
   const [messages, , error] = useData(`/projects/${pid}/messages`, on(pid, 'message'))
+  const [agents] = useData(`/projects/${pid}/agents`, on(pid, 'agent'))
+  const [orders] = useData(`/projects/${pid}/orders`, on(pid, 'order', 'task'))
+  const open = orders?.filter(o => OPEN.includes(o.status)) || []
   const [text, setText] = useState('')
   const [run, busy, sendError] = useAction()
   const [orchRun, setOrchRun] = useState(null)
@@ -38,6 +41,16 @@ export default function Command({ pid, running }) {
   const thinking = orchRun || waiting
   return (
     <section className="chat">
+      {open.length > 0 && (
+        <nav className="orders-strip" aria-label="Open orders">
+          {open.map(o => (
+            <a key={o.id} className="card order-chip" href={`#/board/${o.id}`}>
+              <span className="title">#{o.id} {o.plan?.summary || o.text}</span>
+              <span className="row small"><Badge status={o.status} />{o.total > 0 && <span className="muted">{o.done}/{o.total} done</span>}</span>
+            </a>
+          ))}
+        </nav>
+      )}
       <ErrorText error={error} />
       {messages && messages.length === 0 && (
         <Empty>Give the Orchestrator an order, for example: Add Google sign-in. It replies with a plan for you to approve.</Empty>
@@ -45,9 +58,9 @@ export default function Command({ pid, running }) {
       <ol className="messages">
         {messages?.map(m => (
           <li key={m.id} className={`msg ${m.role}`}>
-            <div className="meta">{m.role === 'user' ? 'You' : 'Orchestrator'} <span className="muted">{ago(m.created_at)}</span></div>
+            <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : 'Orchestrator'} <span className="muted">{ago(m.created_at)}</span></div>
             {m.text && <div className="bubble">{m.text}</div>}
-            {m.order_id && <PlanCard orderId={m.order_id} pid={pid} />}
+            {m.order_id && <PlanCard orderId={m.order_id} pid={pid} agents={agents} />}
           </li>
         ))}
       </ol>
@@ -69,7 +82,7 @@ export default function Command({ pid, running }) {
   )
 }
 
-function PlanCard({ orderId, pid }) {
+function PlanCard({ orderId, pid, agents }) {
   const [order, reload, error] = useData(`/orders/${orderId}`,
     ev => ev.project_id === pid && ((ev.type === 'order' && ev.data.id === orderId) || (ev.type === 'task' && ev.data.order_id === orderId)))
   const [editing, setEditing] = useState(null)
@@ -109,8 +122,8 @@ function PlanCard({ orderId, pid }) {
               <input value={t.title} onChange={e => setField(i, 'title', e.target.value)} />
             </label>
             <div className="row">
-              <label className="field grow"><span>Role</span>
-                <input list={`roles-${orderId}`} value={t.role} onChange={e => setField(i, 'role', e.target.value)} />
+              <label className="field grow"><span>Agent</span>
+                <input list={`agents-${orderId}`} value={t.agent ?? t.role ?? ''} onChange={e => setField(i, 'agent', e.target.value)} />
               </label>
               <label className="field"><span>Size</span>
                 <select value={t.size} onChange={e => setField(i, 'size', e.target.value)}>
@@ -125,7 +138,7 @@ function PlanCard({ orderId, pid }) {
               <summary>
                 <span className="key mono">{t.key}</span>
                 <span className="grow">{t.title}</span>
-                <span className="pill">{t.role}</span>
+                <span className="pill">{t.agent || t.role}</span>
                 <span className="pill">{t.size}</span>
                 {byKey[t.key] && <Badge status={byKey[t.key].status} />}
               </summary>
@@ -139,7 +152,7 @@ function PlanCard({ orderId, pid }) {
           </li>
         ))}
       </ol>
-      <datalist id={`roles-${orderId}`}>{ROLES.map(r => <option key={r} value={r} />)}</datalist>
+      <datalist id={`agents-${orderId}`}>{agents?.filter(a => a.owned_paths?.length).map(a => <option key={a.id} value={a.name} />)}</datalist>
       {open && !editing && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('approve', {})}>Approve</Button>

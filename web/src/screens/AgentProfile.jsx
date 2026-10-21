@@ -3,7 +3,7 @@ import { api, useData } from '../api.js'
 import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
 
-const PERMS = [['open_pr', 'Open PRs'], ['comment', 'Comment on PRs'], ['run_tests', 'Run tests'], ['merge', 'Merge']]
+const PERMS = [['open_pr', 'Open PRs'], ['comment', 'Comment on PRs'], ['run_tests', 'Run tests'], ['merge', 'Merge'], ['autonomous', 'Autonomous (never asks before commands)']]
 const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
 
 function toForm(a) {
@@ -34,11 +34,13 @@ export default function AgentProfile({ pid, id }) {
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setSaved(false) }
   const save = e => {
     e.preventDefault()
+    // Role is fixed after creation; plans address agents by name.
+    const { role, ...fields } = form
     run(async () => {
       await api(`/agents/${id}`, {
         method: 'PATCH',
         body: {
-          ...form,
+          ...fields,
           max_parallel: Number(form.max_parallel), daily_token_budget: Number(form.daily_token_budget),
           owned_paths: lines(form.owned_paths), readonly_paths: lines(form.readonly_paths),
         },
@@ -72,7 +74,7 @@ export default function AgentProfile({ pid, id }) {
         <h2>Profile</h2>
         <div className="grid2">
           {f('name', 'Name', { required: true })}
-          {f('role', 'Role', { required: true })}
+          {f('role', 'Role (set at creation)', { readOnly: true })}
         </div>
         {f('specialty', 'Specialty')}
         <label className="field"><span>Instructions</span>

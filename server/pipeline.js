@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { get, getProject, getTask, activeAgents, setTask, log } from './db.js'
+import { get, getProject, getTask, getAgent, activeAgents, setTask, log } from './db.js'
 import { runClaude } from './runner.js'
 import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
@@ -63,7 +63,8 @@ const docs = async t => {
 const pick = (project_id, role) => activeAgents(project_id).find(a => a.role === role && a.status !== 'paused')
 
 // Runs one check. Returns 'pass' | 'fail' | 'skip' | 'stop'; on fail the task is already sent back.
-async function step(t, project, { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy }) {
+async function step(t, project, opts) {
+  const { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy } = opts
   const a = pick(project.id, role)
   if (!a) {
     log(project.id, kind, `No active ${role} agent; skipped ${label} for "${t.title}"`, { task_id: t.id, order_id: t.order_id })
@@ -75,6 +76,8 @@ async function step(t, project, { role, kind, system, prompt, tools, mode, disal
     allowedTools: tools, disallowedTools: disallowed, permissionMode: mode ?? agentMode(a),
     permissionPolicy: policy && policyFor(project, a, t.worktree),
   })
+  // The checker was removed mid-run: another one of that role takes over.
+  if (r.stopped && getAgent(a.id).removed_at && !getProject(project.id).paused) return step(t, project, opts)
   if (r.stopped || getProject(project.id).paused) return 'stop'
   if (!r.ok) { failTask(t.id, `${label} session crashed: ${String(r.text).slice(0, 1000)}`); return 'stop' }
   let v = parseVerdict(r.text)

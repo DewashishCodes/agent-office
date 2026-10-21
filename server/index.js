@@ -8,7 +8,7 @@ import { killProject, killRun, tokensToday, projectTokensToday, sendToRun, inter
 import { repoInfo, mergePR } from './github.js'
 import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, markOnboarded, resumeChecks } from './scheduler.js'
+import { start, kick, markMerged, markOnboarded, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 
 if (!process.env.OWNER_TOKEN) {
@@ -160,7 +160,9 @@ app.post('/api/projects/:id/messages', (req, res) => {
   res.status(202).json({ ok: true })
 })
 
-app.get('/api/projects/:id/orders', (req, res) => res.json(all('SELECT * FROM orders WHERE project_id = ? ORDER BY id DESC', project(req).id)))
+app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*,
+  (SELECT COUNT(*) FROM tasks WHERE order_id = o.id) total, (SELECT COUNT(*) FROM tasks WHERE order_id = o.id AND status = 'done') done
+  FROM orders o WHERE project_id = ? ORDER BY id DESC`, project(req).id)))
 
 const order = req => found(getOrder(int(req.params.id)), 'order')
 
@@ -210,6 +212,30 @@ app.get('/api/tasks/:id', (req, res) => {
 app.post('/api/tasks/:id/retry', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
   res.json(retryTask(t.id))
+})
+
+// Wall: one request to boot the screen, SSE after that.
+
+export const crewFeed = (project_id, limit = 50) => all(`SELECT * FROM (
+  SELECT m.*, f.name from_name, t.name to_name FROM crew_messages m
+  LEFT JOIN agents f ON f.id = m.from_agent_id LEFT JOIN agents t ON t.id = m.to_agent_id
+  WHERE m.project_id = ? ORDER BY m.id DESC LIMIT ?) ORDER BY id`, project_id, limit)
+
+app.get('/api/projects/:id/wall', (req, res) => {
+  const p = project(req)
+  // shortcut: one tile per agent shows its newest run; a reviewer running two checks shows only the latest.
+  const agents = activeAgents(p.id).map(a => ({
+    ...a,
+    tokens_today: tokensToday(a.id),
+    run: get(`SELECT r.*, t.title task_title FROM runs r LEFT JOIN tasks t ON t.id = r.task_id
+      WHERE r.agent_id = ? ORDER BY r.status = 'running' DESC, r.id DESC`, a.id) ?? null,
+  }))
+  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status NOT IN ('done', 'rejected') ORDER BY id DESC`, p.id).map(o => ({
+    ...o, counts: Object.fromEntries(all('SELECT status, COUNT(*) n FROM tasks WHERE order_id = ? GROUP BY status', o.id).map(c => [c.status, c.n])),
+  }))
+  const permissions = all(`SELECT r.id run_id, r.pending_permission, a.name agent_name FROM runs r LEFT JOIN agents a ON a.id = r.agent_id
+    WHERE r.project_id = ? AND r.status = 'running' AND r.pending_permission IS NOT NULL`, p.id)
+  res.json({ agents, orders, permissions, crew: crewFeed(p.id) })
 })
 
 // Runs: live transcript and intervention
@@ -305,22 +331,17 @@ app.post('/api/agents/:id/clone', (req, res) => {
   res.json(out)
 })
 
-app.post('/api/agents/:id/pause', (req, res) => res.json(setAgent(agent(req).id, { status: 'paused' })))
+app.post('/api/agents/:id/pause', async (req, res) => res.json(await pauseAgent(agent(req).id)))
 
-app.post('/api/agents/:id/resume', (req, res) => {
-  const out = setAgent(agent(req).id, { status: 'idle' })
-  kick()
-  res.json(out)
-})
+app.post('/api/agents/:id/resume', (req, res) => res.json(resumeAgent(agent(req).id)))
 
 app.delete('/api/agents/:id', (req, res) => {
   const a = agent(req)
   if (!a.removable) throw fail(400, `${a.name} cannot be removed`)
-  const out = setAgent(a.id, { removed_at: now() })
-  for (const t of all("SELECT id FROM tasks WHERE agent_id = ? AND status IN ('planned', 'blocked')", a.id)) setTask(t.id, { agent_id: null, status: 'planned' })
-  log(a.project_id, 'agent', `Removed ${a.name}`, { agent_id: a.id })
-  kick()
-  res.json(out)
+  // Every PR goes through a reviewer and QA, so the last one of each stays.
+  if (['reviewer', 'qa'].includes(a.role) && activeAgents(a.project_id).filter(x => x.role === a.role).length < 2)
+    throw fail(400, `${a.name} is the only ${a.role} agent. Add another one first, or pause it instead.`)
+  res.json(removeAgent(a.id))
 })
 
 app.post('/api/agents/:id/notes', (req, res) => {

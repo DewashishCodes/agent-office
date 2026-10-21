@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
 import { Button, ConfirmButton, Empty, ErrorText, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
+import QuickTask from '../components/QuickTask.jsx'
+
+const ROLES = ['custom', 'frontend', 'backend', 'planner', 'reviewer', 'qa']
 
 export default function Team({ pid }) {
   const [agents, reload, error] = useData(`/projects/${pid}/agents`, ev => ev.project_id === pid &&
@@ -13,6 +16,7 @@ export default function Team({ pid }) {
     }
   })
   const [adding, setAdding] = useState(false)
+  const [quick, setQuick] = useState(null)
 
   return (
     <section className="page stack">
@@ -23,14 +27,15 @@ export default function Team({ pid }) {
       <ErrorText error={error} />
       {agents?.length === 0 && <Empty>No agents. Add one from a template.</Empty>}
       <ul className="team">
-        {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} reload={reload} />)}
+        {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} reload={reload} onQuick={() => setQuick(a.name)} />)}
       </ul>
       {adding && <AddAgent pid={pid} onClose={() => setAdding(false)} />}
+      {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
     </section>
   )
 }
 
-function AgentCard({ a, lastEvent, reload }) {
+function AgentCard({ a, lastEvent, reload, onQuick }) {
   const [run, busy, error] = useAction()
   const post = (path, method = 'POST') => run(async () => { await api(`/agents/${a.id}${path}`, { method }); reload() })
   return (
@@ -48,6 +53,8 @@ function AgentCard({ a, lastEvent, reload }) {
         {lastEvent && <span className="mono muted live">{lastEvent}</span>}
       </div>
       <div className="actions">
+        <a className="btn small" href={`#/agent/${a.id}`}>Edit</a>
+        {a.owned_paths?.length > 0 && <Button small onClick={onQuick}>Quick task</Button>}
         <Button small disabled={busy} onClick={() => post('/clone')}>Clone</Button>
         {a.status === 'paused'
           ? <Button small disabled={busy} onClick={() => post('/resume')}>Resume</Button>
@@ -64,6 +71,7 @@ function AgentCard({ a, lastEvent, reload }) {
 function AddAgent({ pid, onClose }) {
   const [templates] = useData('/templates')
   const [name, setName] = useState('')
+  const [role, setRole] = useState('custom')
   const [run, busy, error] = useAction()
   const create = body => run(async () => {
     const a = await api(`/projects/${pid}/agents`, { method: 'POST', body })
@@ -83,9 +91,12 @@ function AddAgent({ pid, onClose }) {
           ))}
         </ul>
         <h3>Blank</h3>
-        <form className="row" onSubmit={e => { e.preventDefault(); create({ role: 'custom', name: name.trim() }) }}>
+        <form className="row wrap" onSubmit={e => { e.preventDefault(); create({ role, name: name.trim() }) }}>
           <label className="field grow"><span>Name</span>
             <input value={name} onChange={e => setName(e.target.value)} required placeholder="Docs Writer" />
+          </label>
+          <label className="field"><span>Role</span>
+            <select value={role} onChange={e => setRole(e.target.value)}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
           </label>
           <Button type="submit" disabled={busy || !name.trim()}>Create</Button>
         </form>

@@ -18,7 +18,7 @@ const EXAMPLE_PLAN = `{
     {
       "key": "t1",
       "title": "Google OAuth callback endpoint",
-      "role": "backend",
+      "agent": "Backend Dev",
       "description": "Add GET /api/auth/google/callback that exchanges the code, upserts the user and sets the session cookie. Follow the existing session helper in server/session.js.",
       "acceptance": ["Valid code creates or updates the user and sets the session cookie", "Invalid code returns 401 with a JSON error", "Integration test covers both cases"],
       "size": "M",
@@ -28,7 +28,7 @@ const EXAMPLE_PLAN = `{
     {
       "key": "t2",
       "title": "Sign in with Google button",
-      "role": "frontend",
+      "agent": "Frontend Dev",
       "description": "Add the button to the login screen. It links to /api/auth/google and shows the error from the callback query string.",
       "acceptance": ["Button visible on the login screen", "Error message shown when ?error= is present"],
       "size": "S",
@@ -38,7 +38,7 @@ const EXAMPLE_PLAN = `{
   ]
 }`
 
-const roster = agents => agents.map(a => `- ${a.name} (role ${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
+const roster = agents => agents.map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
 
 const SYSTEM_ORCH = (lead, project, agents) => `You are ${lead?.name || 'the Orchestrator'}, the lead of an AI dev crew working on the GitHub repo ${project.repo} (default branch ${project.default_branch}). Your working directory is a fresh clone of it. You can read code (Read, Grep, Glob) but you never edit files and never run commands.
 
@@ -58,8 +58,8 @@ How to answer the owner:
 
 Plan rules:
 - One task = one pull request by one agent. Size S (under an hour), M (a few hours), L (a day). Prefer S and M; split anything bigger.
-- "role" must be the role of an agent above that owns paths. Never give tasks to orchestrator, reviewer or qa roles; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
-- "files" lists the paths or globs the task will touch. Every entry must fall inside the owned paths of that role, or nobody can take the task and it is blocked. If work spans two roles, split it into two tasks.
+- "agent" is the exact name of an agent above that owns paths. Several agents can share a role, so always assign by name. Never give tasks to the orchestrator, reviewer or qa agents; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
+- "files" lists the paths or globs the task will touch. Every entry must fall inside the owned paths of that agent, or nobody can take the task and it is blocked. If work spans two agents, split it into two tasks.
 - Never plan changes to protected paths. If the order needs one, say so in the summary and leave it to the owner.
 - "depends_on" lists keys of tasks that must be done first; their branches are merged into the dependent branch. No cycles. Independent tasks run in parallel, so only add real dependencies.
 - "acceptance" holds concrete, checkable criteria. Reviewer and QA judge exactly these, so include the tests you expect.
@@ -113,7 +113,7 @@ function offerPlan(project_id, order_id, plan) {
     return approvePlan(order_id).catch(e => log(project_id, 'error', `Auto-approve failed: ${e.message}`, { order_id }))
   }
   addInbox(project_id, 'plan', `Plan ready: ${plan.summary || getOrder(order_id).text}`, {
-    body: plan.tasks.map(t => `- ${t.title} (${t.role}, ${t.size || 'M'})`).join('\n'), order_id,
+    body: plan.tasks.map(t => `- ${t.title} (${t.agent || t.role}, ${t.size || 'M'})`).join('\n'), order_id,
   })
 }
 
@@ -183,9 +183,12 @@ export async function approvePlan(order_id, tasks = null) {
   log(pid, 'order', `Plan approved: ${plan.summary || order.text}`, { order_id })
 
   const project = getProject(pid)
+  const agents = activeAgents(pid)
+  // Older stored plans carry only "role"; new ones name the agent.
   const specs = plan.tasks.map((p, n) => ({
     key: String(p.key || `t${n + 1}`), title: String(p.title || p.key || `Task ${n + 1}`), description: String(p.description || ''),
-    role: String(p.role || 'custom'), size: ['S', 'M', 'L'].includes(p.size) ? p.size : 'M',
+    plan_agent: p.agent ? String(p.agent) : null,
+    role: String(p.role || agents.find(a => a.name === p.agent)?.role || 'custom'), size: ['S', 'M', 'L'].includes(p.size) ? p.size : 'M',
     acceptance: Array.isArray(p.acceptance) ? p.acceptance.map(String) : [],
     files: Array.isArray(p.files) ? p.files.map(String) : [],
     deps: Array.isArray(p.depends_on) ? p.depends_on.map(String) : [],
@@ -200,7 +203,7 @@ export async function approvePlan(order_id, tasks = null) {
     } catch (e) { issues.push(null); log(pid, 'error', `Issue for "${s.title}" failed: ${e.message}`, { order_id }) }
   }
   // Rows and their deps are written in one synchronous pass so no tick sees a task without its deps.
-  const agents = activeAgents(pid), ids = new Map()
+  const ids = new Map()
   const rows = specs.map(({ key, deps, ...s }, n) => {
     const t = { project_id: pid, order_id, plan_key: key, ...s, issue_number: issues[n] }
     t.agent_id = matchAgent(agents, t)?.id ?? null

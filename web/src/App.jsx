@@ -8,8 +8,10 @@ import Board from './screens/Board.jsx'
 import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
 import Inbox from './screens/Inbox.jsx'
+import Wall from './screens/Wall.jsx'
 
-const TABS = [['command', 'Command'], ['board', 'Board'], ['team', 'Team'], ['inbox', 'Inbox']]
+// Wall is second on the phone; wall.css moves it first from 900px, where it is the main screen.
+const TABS = [['command', 'Command'], ['wall', 'Wall'], ['board', 'Board'], ['team', 'Team'], ['inbox', 'Inbox']]
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -62,6 +64,7 @@ function Shell() {
   else if (view === 'team') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} />
+  else if (view === 'wall') screen = <Wall {...ctx} />
   else screen = <Command {...ctx} running={detail?.running_runs} />
 
   const tab = view === 'agent' ? 'team' : view
@@ -73,7 +76,7 @@ function Shell() {
         <nav className="tabs" aria-label="Main">
           <div className="brand"><img src="/icon.svg" alt="" width="24" height="24" /> Agent Crew</div>
           {TABS.map(([id, name]) => (
-            <a key={id} href={`#/${id}`} className="tab" aria-current={tab === id ? 'page' : undefined}>
+            <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} aria-current={tab === id ? 'page' : undefined}>
               <span>{name}</span>
               {id === 'inbox' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
             </a>

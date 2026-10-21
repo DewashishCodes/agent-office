@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
-import { runClaude, tokensToday, projectTokensToday, runningCount } from './runner.js'
+import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
 import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
@@ -184,7 +184,7 @@ function tickProject(p) {
       if (!pick) {
         const files = t.files.join(', ') || '(no files listed)'
         setTask(t.id, { status: 'blocked', agent_id: null, notes: `No agent covers ${files}` })
-        addInbox(p.id, 'question', `No agent covers ${files}`, { body: `Task "${t.title}" (role ${t.role}) needs an agent whose owned paths cover ${files}. Add or edit an agent, then retry the task.`, order_id: t.order_id, task_id: t.id })
+        addInbox(p.id, 'question', `No agent covers ${files}`, { body: `Task "${t.title}" (${t.plan_agent || `role ${t.role}`}) needs an agent whose owned paths cover ${files}. Add or edit an agent, then retry the task.`, order_id: t.order_id, task_id: t.id })
         log(p.id, 'blocked', `No agent covers "${t.title}"`, { task_id: t.id, order_id: t.order_id })
         continue
       }
@@ -215,6 +215,41 @@ let kickTimer = null
 export function kick() {
   if (kickTimer) return
   kickTimer = setTimeout(() => { kickTimer = null; tick() }, 200)
+}
+
+const IN_FLIGHT = `('in_progress', 'in_review', 'qa')`
+
+// Removal never breaks work in flight: its runs stop without counting an attempt and the next tick re-matches by paths.
+export function removeAgent(agent_id) {
+  const a = getAgent(agent_id)
+  setAgent(a.id, { removed_at: now(), status: 'idle' })
+  const tasks = all(`SELECT id, status, notes FROM tasks WHERE agent_id = ? AND status IN ('planned', 'in_progress', 'in_review', 'qa')`, a.id)
+  for (const r of all(`SELECT id FROM runs WHERE status = 'running' AND (agent_id = ? OR task_id IN (SELECT id FROM tasks WHERE agent_id = ? AND status IN ${IN_FLIGHT}))`, a.id, a.id)) killRun(r.id)
+  for (const t of tasks) {
+    const notes = t.status === 'planned' ? t.notes : [`Reassigned: ${a.name} was removed.`, t.notes].filter(Boolean).join('\n\n')
+    setTask(t.id, { agent_id: null, status: 'planned', notes })
+  }
+  // Blocked stays blocked; a retry re-matches.
+  for (const t of all(`SELECT id FROM tasks WHERE agent_id = ? AND status = 'blocked'`, a.id)) setTask(t.id, { agent_id: null })
+  log(a.project_id, 'agent', `Removed ${a.name}${tasks.length ? `, ${tasks.length} task(s) go back to the queue` : ''}`, { agent_id: a.id })
+  kick()
+  return getAgent(a.id)
+}
+
+const agentRuns = agent_id => liveRuns().filter(r => r.agent_id === agent_id)
+
+export async function pauseAgent(agent_id) {
+  const a = setAgent(agent_id, { status: 'paused' })
+  for (const r of agentRuns(agent_id)) if (r.state === 'running' || r.state === 'waiting') await interruptRun(r.run_id)
+  return a
+}
+
+export function resumeAgent(agent_id) {
+  const paused = agentRuns(agent_id).filter(r => r.state === 'paused')
+  for (const r of paused) resumeRun(r.run_id)
+  const a = setAgent(agent_id, { status: runningCount(agent_id) ? 'working' : 'idle' })
+  kick()
+  return a
 }
 
 // Shared by the PR poll and the Inbox merge action; idempotent so a merge seen by both is handled once.
