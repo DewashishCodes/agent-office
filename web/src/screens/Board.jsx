@@ -57,6 +57,7 @@ export default function Board({ pid, project, orderId }) {
                     {t.agent_name && <span>{t.agent_name}</span>}
                     {t.attempts > 0 && <span className="warn">try {t.attempts + 1}</span>}
                     {t.pr_number && <span>PR #{t.pr_number}</span>}
+                    {t.status === 'planned' && t.wait_reason && <span className="wait">{t.wait_reason}</span>}
                     {t.merged ? <span className="ok">merged</span> : null}
                   </span>
                 </button>

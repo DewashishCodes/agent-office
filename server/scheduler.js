@@ -9,7 +9,7 @@ import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
-import { matchAgent, readyTasks, isAllowed, permissionPolicy } from './rules.js'
+import { matchAgent, readyTasks, isAllowed, permissionPolicy, overlaps } from './rules.js'
 
 export { matchAgent, readyTasks, isAllowed }
 
@@ -190,9 +190,16 @@ function tickProject(p) {
     }
     return
   }
-  const tasks = all(`SELECT t.* FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.project_id = ? AND o.status = 'in_progress' ORDER BY t.id`, p.id)
+  // Every task of the project, so a dependency on another order counts once it is done.
+  const tasks = all(`SELECT t.*, o.status order_status FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.project_id = ? ORDER BY t.id`, p.id)
+  const active = tasks.filter(t => ['in_progress', 'in_review', 'qa'].includes(t.status))
   const agents = activeAgents(p.id)
-  for (const t of readyTasks(tasks)) {
+  for (const t of readyTasks(tasks).filter(t => t.order_status === 'in_progress')) {
+    // Two orders editing the same files would conflict at merge time; the later one waits.
+    const lock = active.find(x => x.order_id !== t.order_id && overlaps(t.files, x.files))
+    const reason = lock ? `Waiting for #${lock.id} (same files)` : null
+    if (reason !== t.wait_reason) setTask(t.id, { wait_reason: reason })
+    if (lock) continue
     let a = agents.find(x => x.id === t.agent_id)
     if (!a || a.status === 'paused') {
       const pick = matchAgent(agents, t)
@@ -217,6 +224,7 @@ function tickProject(p) {
     }
     // Synchronous claim before any await: the next tick or loop pass cannot pick it again.
     setTask(t.id, { status: 'in_progress', agent_id: a.id })
+    active.push(t)
     runTaskSafe(t.id)
   }
 }

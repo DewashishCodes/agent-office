@@ -11,6 +11,7 @@ import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, markOnboarded, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
+import { matchAgent } from './rules.js'
 
 if (!process.env.OWNER_TOKEN) {
   console.error('OWNER_TOKEN is not set. Put OWNER_TOKEN=<long random string> in .env and restart.')
@@ -202,6 +203,25 @@ app.get('/api/projects/:id/tasks', (req, res) => {
   if (agent_id) sql += ' AND t.agent_id = ?', params.push(int(agent_id))
   if (order_id) sql += ' AND t.order_id = ?', params.push(int(order_id))
   res.json(all(sql + ' ORDER BY t.id', ...params))
+})
+
+// Direct task: a one-task order for a named agent, no plan round trip. Reviewer and QA still run.
+app.post('/api/projects/:id/tasks', (req, res) => {
+  const p = project(req)
+  const { agent: name, title, description = '', acceptance = [], files = [] } = req.body ?? {}
+  str(title, 'title')
+  if (typeof description !== 'string' || !isStrs(acceptance) || !isStrs(files)) throw fail(400, 'description must be text, acceptance and files lists of text')
+  const a = activeAgents(p.id).find(x => x.name === str(name, 'agent'))
+  if (!a?.owned_paths.length) throw fail(400, `${name} is not an agent that owns paths`)
+  if (!matchAgent([a], { files })) throw fail(400, `${a.name} does not own ${files.join(', ')}`)
+  const spec = { key: 't1', title, agent: a.name, description, acceptance, files, size: 'S', depends_on: [] }
+  const order_id = insert('orders', { project_id: p.id, text: title, status: 'in_progress', plan: { summary: title, direct: true, tasks: [spec] } })
+  const task_id = insert('tasks', { project_id: p.id, order_id, plan_key: 't1', title, description, role: a.role, plan_agent: a.name, acceptance, files, size: 'S', agent_id: a.id })
+  emit('order', p.id, getOrder(order_id))
+  log(p.id, 'order', `Quick task for ${a.name}: ${title}`, { order_id, task_id, agent_id: a.id })
+  const t = setTask(task_id, {})
+  kick()
+  res.json(t)
 })
 
 app.get('/api/tasks/:id', (req, res) => {

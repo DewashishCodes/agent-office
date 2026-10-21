@@ -44,3 +44,17 @@ test('recover: a restart never counts as a failed attempt', () => {
   assert.equal(getTask(t2).status, 'planned')
   assert.equal(getTask(t2).attempts, 0)
 })
+
+test('file lock: a ready task waits for overlapping work of another order', async () => {
+  const { kick } = await import('../server/scheduler.js')
+  const pid = insert('projects', { name: 'q', repo: 'o/q' })
+  const a = insert('agents', { project_id: pid, name: 'Web', role: 'frontend', owned_paths: ['web/**'], max_parallel: 5, status: 'paused' })
+  const o1 = insert('orders', { project_id: pid, text: 'one', status: 'in_progress' })
+  const o2 = insert('orders', { project_id: pid, text: 'two', status: 'in_progress' })
+  const busy = insert('tasks', { project_id: pid, order_id: o1, title: 'a', role: 'frontend', files: ['web/src/**'], status: 'in_progress', agent_id: a })
+  const waiting = insert('tasks', { project_id: pid, order_id: o2, title: 'b', role: 'frontend', files: ['web/src/App.jsx'] })
+  kick()
+  await new Promise(r => setTimeout(r, 400))
+  assert.equal(getTask(waiting).wait_reason, `Waiting for #${busy} (same files)`)
+  assert.equal(getTask(waiting).status, 'planned')
+})

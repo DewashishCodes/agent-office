@@ -1,4 +1,4 @@
-import { all, update, insert, getProject, getOrder, activeAgents, setTask, setOrder, log, addMessage, addInbox, resolveInbox } from './db.js'
+import { all, get, update, insert, getProject, getOrder, activeAgents, setTask, setOrder, log, addMessage, addInbox, resolveInbox } from './db.js'
 import { emit } from './bus.js'
 import { runClaude } from './runner.js'
 import { ensureClone, pullDefault, createIssue, prDiff } from './github.js'
@@ -50,6 +50,7 @@ Your crew (only agents that own paths can take tasks):
 ${roster(agents)}
 
 Protected paths no agent may touch: ${project.settings.protected_paths.join(', ')}
+${inFlight(project.id)}
 
 How to answer the owner:
 1. A question or chat: answer in plain text, short. No json block.
@@ -61,7 +62,7 @@ Plan rules:
 - "agent" is the exact name of an agent above that owns paths. Several agents can share a role, so always assign by name. Never give tasks to the orchestrator, reviewer or qa agents; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
 - "files" lists the paths or globs the task will touch. Every entry must fall inside the owned paths of that agent, or nobody can take the task and it is blocked. If work spans two agents, split it into two tasks.
 - Never plan changes to protected paths. If the order needs one, say so in the summary and leave it to the owner.
-- "depends_on" lists keys of tasks that must be done first; their branches are merged into the dependent branch. No cycles. Independent tasks run in parallel, so only add real dependencies.
+- "depends_on" lists keys of tasks that must be done first; their branches are merged into the dependent branch. No cycles. Independent tasks run in parallel, so only add real dependencies. To wait for a task of an order already in flight, use "order:<id>/<key>", for example "order:3/t2".
 - "acceptance" holds concrete, checkable criteria. Reviewer and QA judge exactly these, so include the tests you expect.
 - "description" says what to build and where, naming the existing code to follow.
 - "key" is a short unique id: t1, t2, ...
@@ -70,6 +71,18 @@ Plan format, exactly this shape:
 \`\`\`json
 ${EXAMPLE_PLAN}
 \`\`\``
+
+// Other orders still being built, so a new plan neither repeats them nor edits the same files at the same time.
+function inFlight(project_id) {
+  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status IN ('in_progress', 'ready_to_merge') ORDER BY id`, project_id)
+  if (!orders.length) return ''
+  const lines = orders.map(o => [`- Order #${o.id} "${o.plan?.summary || o.text}" (${o.status}):`,
+    ...all('SELECT plan_key, title, status, files FROM tasks WHERE order_id = ? ORDER BY id', o.id)
+      .map(t => `  - ${t.plan_key} "${t.title}" [${t.status}] files: ${t.files.join(', ') || '(none listed)'}`)].join('\n'))
+  return `
+Orders already in flight. Do not plan their work again. A new task that touches the same files waits until theirs are done (the scheduler enforces it), so either avoid those files or add a depends_on like "order:<id>/<key>":
+${lines.join('\n')}`
+}
 
 const lead = agents => agents.find(a => a.role === 'orchestrator')
 
@@ -225,8 +238,13 @@ export async function approvePlan(order_id, tasks = null) {
     ids.set(key, id)
     return { id, key, deps }
   })
-  // Unknown keys are dropped: a dangling dependency would leave the task planned forever.
-  for (const r of rows) setTask(r.id, { depends_on: r.deps.filter(k => ids.has(k) && k !== r.key).map(k => ids.get(k)) })
+  // "order:3/t2" points at a task of another order. Unknown keys are dropped: a dangling dependency would leave the task planned forever.
+  const resolve = (k, own) => {
+    if (ids.has(k)) return k === own ? null : ids.get(k)
+    const m = /^order:(\d+)\/(.+)$/.exec(k)
+    return m ? get('SELECT id FROM tasks WHERE project_id = ? AND order_id = ? AND plan_key = ?', pid, Number(m[1]), m[2])?.id ?? null : null
+  }
+  for (const r of rows) setTask(r.id, { depends_on: r.deps.map(k => resolve(k, r.key)).filter(Boolean) })
   log(pid, 'order', `${rows.length} tasks created`, { order_id })
   kick()
 }
@@ -247,7 +265,9 @@ export async function integrateOrder(order_id) {
   const tasks = all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', order_id)
   const project = getProject(pid)
   let notes = ''
-  try {
+  // One pull request has nothing to fit together, so the Orchestrator round trip is skipped.
+  if (tasks.filter(t => t.pr_number && !t.merged).length < 2) notes = 'Single pull request, no integration check needed.'
+  else try {
     const diffs = []
     for (const t of tasks.filter(t => t.pr_number && !t.merged)) {
       diffs.push(`## PR #${t.pr_number}: ${t.title} (task ${t.plan_key}, depends on ${t.depends_on.map(id => tasks.find(x => x.id === id)?.plan_key).join(', ') || 'nothing'})\n\n\`\`\`diff\n${await prDiff(project, t.pr_number)}\n\`\`\``)
