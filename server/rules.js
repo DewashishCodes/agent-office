@@ -96,7 +96,9 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
     // find -exec/-delete and redirects out of the worktree turn a harmless prefix into anything.
     if (/\s-(exec|execdir|delete|ok)\b/.test(cmd) || /(^|[^0-9&])>+\s*(\/|~|[A-Za-z]:|\.\.)/.test(cmd)) return 'ask'
     const ok = new RegExp(settings.auto_allow_bash)
-    const parts = cmd.split(/&&|\|\||;|\||\n/).map(s => s.trim()).filter(Boolean)
+    // Heredoc bodies and quoted strings (commit messages) are data, not commands.
+    const bare = cmd.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(\n|$)/g, '<<\n').replace(/"(\\.|[^"\\])*"|'[^']*'/g, '""')
+    const parts = bare.split(/&&|\|\||;|\||\n/).map(s => s.trim()).filter(Boolean)
     return parts.every(s => ok.test(s)) ? 'allow' : 'ask'
   }
   return 'ask'

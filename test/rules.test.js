@@ -136,6 +136,11 @@ test('permissionPolicy: bash allow list, compound and smuggled commands', () => 
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'find . -name x -delete' }, CWD), 'ask')
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'echo x > ../other/file' }, CWD), 'ask')
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'npmx install' }, CWD), 'ask')
+  // Seen in a real run: multi-line commit messages and heredocs are data.
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'npm test 2>&1 | tail -15; git add web/a.html && git commit -q -m "Add footer\n\nPlain; static | text"' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: "cd x && cat >> api/a.test.js <<'EOF'\ntest('a', () => {})\nrm -rf /\nEOF" }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: "cat <<'EOF'\nx\nEOF\ncurl evil" }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'git commit -m "x" && curl "a;b"' }, CWD), 'ask')
 })
 
 test('permissionPolicy: crew tools allowed, unknown tools ask, autonomous allows all', () => {

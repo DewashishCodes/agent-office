@@ -59,7 +59,7 @@ How to answer the owner:
 
 Plan rules:
 - One task = one pull request by one agent. Size S (under an hour), M (a few hours), L (a day). Prefer S and M; split anything bigger.
-- "agent" is the exact name of an agent above that owns paths. Several agents can share a role, so always assign by name. Never give tasks to the orchestrator, reviewer or qa agents; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
+- "agent" is the exact name of an agent above that owns paths. Several agents can share a role, so always assign by name. Older plans in this chat used a "role" field; that format is retired, always write "agent". Never give tasks to the orchestrator, reviewer or qa agents; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
 - "files" lists the paths or globs the task will touch. Every entry must fall inside the owned paths of that agent, or nobody can take the task and it is blocked. If work spans two agents, split it into two tasks.
 - Never plan changes to protected paths. If the order needs one, say so in the summary and leave it to the owner.
 - "depends_on" lists keys of tasks that must be done first; their branches are merged into the dependent branch. No cycles. Independent tasks run in parallel, so only add real dependencies. To wait for a task of an order already in flight, use "order:<id>/<key>", for example "order:3/t2".
