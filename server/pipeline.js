@@ -4,6 +4,7 @@ import { get, getProject, getTask, getAgent, activeAgents, setTask, log } from '
 import { runClaude } from './runner.js'
 import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
+import { CREW_TOOLS, mcpNames } from './crewmcp.js'
 import { parseVerdict } from './rules.js'
 
 const MAX_DIFF = 200_000
@@ -17,6 +18,7 @@ ${a.instructions}
 Rules:
 - Read CLAUDE.md and .crew/PLAYBOOK.md in the repo root first. Their conventions are the standard you review against.
 - You only read (Read, Grep, Glob). Never edit files.
+- Call crew_read first: the author or the Orchestrator may have explained decisions about this task there.
 - The diff is in the prompt. Open the changed files for context when the diff is not enough.
 - Ask for changes only for real bugs, a missing or unmet acceptance criterion, a broken convention from CLAUDE.md, a security problem, or changes outside the task scope. Style nits are not a reason to block; mention them as optional.
 - Notes go straight to the developer for the next attempt, so make each one specific: file, what is wrong, what to do.
@@ -64,7 +66,7 @@ const pick = (project_id, role) => activeAgents(project_id).find(a => a.role ===
 
 // Runs one check. Returns 'pass' | 'fail' | 'skip' | 'stop'; on fail the task is already sent back.
 async function step(t, project, opts) {
-  const { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy } = opts
+  const { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy, mcp } = opts
   const a = pick(project.id, role)
   if (!a) {
     log(project.id, kind, `No active ${role} agent; skipped ${label} for "${t.title}"`, { task_id: t.id, order_id: t.order_id })
@@ -73,7 +75,7 @@ async function step(t, project, opts) {
   const r = await runClaude({
     project_id: project.id, agent_id: a.id, task_id: t.id, kind, cwd: t.worktree,
     prompt, systemPrompt: system(a, project), model: a.model, effort: a.effort,
-    allowedTools: tools, disallowedTools: disallowed, permissionMode: mode ?? agentMode(a),
+    allowedTools: [...tools, ...mcpNames(mcp)], mcp, disallowedTools: disallowed, permissionMode: mode ?? agentMode(a),
     permissionPolicy: policy && policyFor(project, a, t.worktree),
   })
   // The checker was removed mid-run: another one of that role takes over.
@@ -102,7 +104,7 @@ export async function checkTask(task_id) {
   const review = await step(t, project, {
     role: 'reviewer', kind: 'review', label: 'Review', system: SYSTEM_REVIEW,
     prompt: `${context}\n\n## Diff (git diff ${t.base_sha}..HEAD)\n\n\`\`\`diff\n${diff}\n\`\`\`\n\nReview it and end with the json verdict block.`,
-    tools: ['Read', 'Grep', 'Glob'], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
+    tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read'], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
   })
   if (review === 'fail' || review === 'stop') return
 
@@ -112,7 +114,7 @@ export async function checkTask(task_id) {
     role: 'qa', kind: 'qa', label: 'QA', system: SYSTEM_QA,
     prompt: `${context}\n\nThe branch ${t.branch} is checked out here. Run the checks and end with the json verdict block.`,
     // Bash is left out of the allow list so each command goes through the permission policy; QA never edits.
-    tools: ['Read', 'Grep', 'Glob'], mode: null, policy: true, disallowed: [...denyRules(project), 'Edit', 'Write', 'NotebookEdit'],
+    tools: ['Read', 'Grep', 'Glob'], mcp: CREW_TOOLS, mode: null, policy: true, disallowed: [...denyRules(project), 'Edit', 'Write', 'NotebookEdit'],
     okWord: 'pass', badWord: 'fail', field: 'report',
   })
   if (qa === 'fail' || qa === 'stop') return

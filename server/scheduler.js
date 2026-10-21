@@ -8,6 +8,7 @@ import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, inte
 import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
+import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
 import { matchAgent, readyTasks, isAllowed, permissionPolicy } from './rules.js'
 
 export { matchAgent, readyTasks, isAllowed }
@@ -76,20 +77,28 @@ Rules, no exceptions:
 - Never read, print or copy .env files or secrets.
 - Run the relevant tests and build from CLAUDE.md before you finish, and fix what you broke.
 - If the task needs a change outside your paths, do your part and say exactly what is missing in your final message.
-- End with a short summary: what you changed, how you tested it, anything left open.`
+- End with a short summary: what you changed, how you tested it, anything left open. Agents whose tasks depend on yours get this summary, so name the APIs, files and decisions they need.
+
+Crew tools (MCP server "crew"):
+- crew_post: tell a crew mate something they need now: an API shape, a renamed file, a decision that affects their task. Short and concrete.
+- crew_ask: only when an ambiguity would change your output. Prefer "orchestrator" (knows the plan) or the peer that owns the code; ask "owner" only when the answer changes scope.
+- crew_read and crew_task_status: see messages for you and what sibling tasks built.
+- Messages from crew mates or the owner can arrive while you work, marked [Message from ...]. Take them into account.`
 
 async function taskPrompt(t, a) {
   const [claude, playbook] = await Promise.all([readOpt(join(t.worktree, 'CLAUDE.md')), readOpt(join(t.worktree, '.crew', 'PLAYBOOK.md'))])
   const notes = all('SELECT text FROM agent_notes WHERE agent_id = ? ORDER BY id', a.id).map(n => `- ${n.text}`).join('\n')
   const deps = t.depends_on.map(getTask).filter(Boolean)
+  const messages = takeQueued(a.id)
   return [
     claude && `# CLAUDE.md\n\n${claude}`,
     playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`,
     notes && `# Notes from the owner for you\n\n${notes}`,
+    messages && `# Messages for you\n\n${messages}`,
     `# Your task: ${t.title}\n\n${t.description}`,
     `## Acceptance criteria\n\n${t.acceptance.map(c => `- ${c}`).join('\n') || '- (none given, use the description)'}`,
     t.files.length && `## Files you are expected to touch\n\n${t.files.join('\n')}`,
-    deps.length && `## Already merged into your branch\n\n${deps.map(d => `- ${d.title} (${d.branch})`).join('\n')}`,
+    deps.length && `## Already merged into your branch\n\n${deps.map(d => `- ${d.title} (${d.branch})${d.result ? `\n\n  What its agent reported:\n\n${d.result.slice(0, 2000).replace(/^/gm, '  > ')}` : ''}`).join('\n\n')}`,
     t.attempts && t.notes && `## Previous attempt failed (attempt ${t.attempts + 1} now)\n\nYour earlier work is already on this branch. Fix these points:\n\n${t.notes}`,
   ].filter(Boolean).join('\n\n')
 }
@@ -123,15 +132,23 @@ async function runTask(task_id) {
   log(project.id, 'dispatch', `${agent.name} started "${t.title}"${t.attempts ? ` (attempt ${t.attempts + 1})` : ''}`, { task_id, agent_id: agent.id, order_id: t.order_id })
   issueStatus(project, t, 'in_progress')
 
-  const r = await runClaude({
-    project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path,
-    prompt: await taskPrompt(t, agent), systemPrompt: SYSTEM_TASK(agent, t, project),
+  const common = {
+    project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path, systemPrompt: SYSTEM_TASK(agent, t, project),
     model: agent.model, effort: agent.effort, permissionMode: agentMode(agent), disallowedTools: denyRules(project),
-    permissionPolicy: policyFor(project, agent, wt.path),
-  })
+    permissionPolicy: policyFor(project, agent, wt.path), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
+  }
+  // Feedback on a retry goes into the same session when the last one ended cleanly: it already knows the code it wrote.
+  const prev = t.attempts && t.notes ? get(`SELECT session_id, status, agent_id FROM runs WHERE task_id = ? AND kind = 'task' ORDER BY id DESC`, task_id) : null
+  let r = null
+  if (prev?.session_id && prev.status === 'ok' && prev.agent_id === agent.id) {
+    r = await runClaude({ ...common, resume: prev.session_id, prompt: `Your work came back (attempt ${t.attempts + 1} now). Fix these points on the same branch, run the tests again, commit, and end with a short summary.\n\n${t.notes}` })
+    if (!r.ok && !r.stopped && !getProject(project.id).paused) r = null
+  }
+  r ??= await runClaude({ ...common, prompt: await taskPrompt(t, agent) })
   // Kill switch, removal or the owner stopping the run already put the task where it belongs; not an attempt.
   if (r.stopped || getProject(project.id).paused) return
   if (!r.ok) return failTask(task_id, `The session crashed: ${String(r.text).slice(0, 2000)}`)
+  setTask(task_id, { result: r.text })
 
   await commitAll(wt.path, `${t.title} (crew task ${t.id})`)
   const files = await changedFiles(wt.path, base_sha)

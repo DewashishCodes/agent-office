@@ -28,6 +28,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   out({ type: 'system', subtype: 'init', session_id: sid })
   out({ type: 'user', message: { role: 'user', content: m.message.content } })
   const text = m.message.content
+  if (text.includes('MCP')) return reply(process.argv[process.argv.indexOf('--mcp-config') + 1])
   if (text.includes('HANG')) return out({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'sleep 100' } }] } })
   if (text.includes('ASK')) {
     pending.set('perm-1', true)

@@ -75,10 +75,22 @@ const lead = agents => agents.find(a => a.role === 'orchestrator')
 
 // One Orchestrator session per project at a time: two messages must not resume the same session in parallel.
 const asking = new Map()
+const waiting = new Map()
 function ask(project_id, ...rest) {
+  waiting.set(project_id, (waiting.get(project_id) || 0) + 1)
   const p = (asking.get(project_id) || Promise.resolve()).then(() => askNow(project_id, ...rest))
+    .finally(() => waiting.set(project_id, waiting.get(project_id) - 1))
   asking.set(project_id, p.catch(() => {}))
   return p
+}
+
+// An agent asks mid-task through crew_ask; the answer goes back to it and shows in the chat as a crew line.
+export async function askFromAgent(project_id, agent, task, question) {
+  const about = task ? ` while working on task #${task.id} "${task.title}"` : ''
+  const r = await ask(project_id, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]\n\n${question}`)
+  const answer = r.ok ? parseReply(r.text).text || '(no answer)' : `The Orchestrator could not answer: ${String(r.text).slice(0, 500)}`
+  addMessage(project_id, 'system', `${agent?.name || 'An agent'} asked the Orchestrator${about}: ${question}\n\nAnswer: ${answer}`)
+  return answer
 }
 
 // Runs the Orchestrator in the clone. chat=true resumes and stores the chat session.
@@ -91,7 +103,8 @@ async function askNow(project_id, prompt, { kind = 'orchestrator', chat = true }
   const base = {
     project_id, agent_id: orch?.id ?? null, kind, cwd: project.local_path, prompt,
     systemPrompt: SYSTEM_ORCH(orch, project, agents), model: orch?.model || 'opus', effort: orch?.effort || 'high',
-    allowedTools: ['Read', 'Grep', 'Glob'], permissionMode: 'dontAsk',
+    allowedTools: ['Read', 'Grep', 'Glob', 'mcp__crew__crew_post', 'mcp__crew__crew_read'], permissionMode: 'dontAsk',
+    mcp: ['crew_post', 'crew_read'],
   }
   const resume = chat ? project.orchestrator_session_id : null
   let r = await runClaude({ ...base, resume })
@@ -119,7 +132,8 @@ function offerPlan(project_id, order_id, plan) {
 
 export async function chat(project_id, text) {
   addMessage(project_id, 'user', text)
-  if (ORDER_WORDS.test(text)) addMessage(project_id, 'orchestrator', 'Got it, looking at the repo.')
+  if (waiting.get(project_id) > 0) addMessage(project_id, 'orchestrator', 'Queued: I will get to this right after the current request.')
+  else if (ORDER_WORDS.test(text)) addMessage(project_id, 'orchestrator', 'Got it, looking at the repo.')
   try {
     const r = await ask(project_id, text)
     if (!r.ok) throw new Error(r.text || 'session failed')

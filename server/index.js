@@ -10,6 +10,7 @@ import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, markOnboarded, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
+import { mcpHandler, answerFromOwner } from './crewmcp.js'
 
 if (!process.env.OWNER_TOKEN) {
   console.error('OWNER_TOKEN is not set. Put OWNER_TOKEN=<long random string> in .env and restart.')
@@ -61,6 +62,9 @@ function retryTask(id) {
 export const app = express()
 app.set('trust proxy', true)
 app.use(express.json({ limit: '1mb' }))
+
+// Crew MCP for agent sessions on this host; auth is the per-run token, not the owner cookie.
+app.all('/mcp/:token', mcpHandler)
 
 app.post('/api/login', (req, res) => {
   const token = req.body?.token
@@ -389,8 +393,11 @@ app.post('/api/inbox/:id/action', async (req, res) => {
       markOnboarded(p.id)
     }
   } else if (key === 'question:answer') {
-    background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${str(text, 'text')}`))
-    status = 202
+    // Agent questions go back to the agent; anything else is a note for the Orchestrator.
+    if (!answerFromOwner(item, str(text, 'text'))) {
+      background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`))
+      status = 202
+    }
   } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'))
   else throw fail(400, `unknown action ${action} for ${item.kind}`)
   resolveInbox(item.id)
