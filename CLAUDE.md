@@ -21,14 +21,15 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 - `server/db.js` schema + helpers (node:sqlite, `data/crew.db`). Use `setTask/setAgent/setOrder/log/addInbox` so changes broadcast.
 - `server/bus.js` event bus; `index.js` forwards every event over SSE `/api/events`, the UI refetches on matching events.
-- `server/runner.js` spawns `claude -p --output-format stream-json` per session with `--setting-sources project --strict-mcp-config` (keeps the owner's personal hooks and plugins out), system prompt via `--append-system-prompt-file`. Tracks tokens, cost, 5-hour limit (kv `rate_limit`), live `last_event`.
+- `server/runner.js` keeps one `claude -p` per run with stdin open (stream-json in and out, `--permission-prompt-tool stdio`, `--setting-sources project --strict-mcp-config`). Stores the transcript in `run_events`, streams text deltas, accepts owner messages, interrupt, resume, handoff; permission prompts go to `rules.permissionPolicy` or the owner. Tracks tokens, cost, 5-hour limit (kv `rate_limit`), `last_event`.
+- `server/crewmcp.js` HTTP MCP server at `/mcp/:token` (one token per run): crew_post, crew_ask, crew_read, crew_task_status so agents message and ask each other, the Orchestrator or the owner.
 - `server/github.js` git and gh wrappers. Clone-level ops (clone, fetch, worktree add/remove, push) go through one serial queue; parallel agents raced on git lock files without it.
 - `server/orchestrator.js` chat (resumed session per project, one at a time per project), plan JSON, revise, approve (rejects dependency loops), integrate.
 - `server/scheduler.js` 5s tick dispatches ready tasks (deps done, owned paths cover files, max_parallel, daily budgets), runs each in `data/worktrees/<project>/crew-t<id>`, gate = changed files vs owned and protected paths, push + PR. 60s poll for merges. `markMerged`/`markOnboarded` are the single idempotent merge path. Boot recovery puts interrupted tasks back.
 - `server/pipeline.js` Reviewer then QA per PR, verdicts as fenced json, failures go through `failTask` (2 attempts, then Inbox).
 - `server/onboarding.js` writes CLAUDE.md, `.crew/PLAYBOOK.md`, `.crew/owned-paths.json` in the target repo as one PR.
 - `server/index.js` Express routes, owner-token cookie auth, inbox actions. `server/notify.js` web push (VAPID in kv) and daily digest.
-- `web/` React 19 PWA, plain CSS, hash routing. Screens: Login, Projects, Command, Board, Team, AgentProfile, Inbox.
+- `web/` React 19 PWA, plain CSS, hash routing. Screens: Login, Projects, Command, Wall (live agent tiles, desktop first), Board, Team, AgentProfile, Inbox.
 
 ## Conventions
 
@@ -39,22 +40,23 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 ## Gotchas
 
-- Task agents and QA run with `bypassPermissions` inside worktrees; guarded by the owned-path gate and disallowed `git push`, `gh`, `.env` reads. A Bash command could still touch files outside the worktree.
+- Task agents and QA run with `acceptEdits`: Bash outside the `auto_allow_bash` list and file access outside the worktree ask the owner (Inbox, Wall). Deny rules (`git push`, `gh`, `.env`, protected paths) apply in every mode. An agent marked autonomous goes back to `bypassPermissions`.
+- `npm test` uses `test/fake-claude.mjs` via `CREW_CLAUDE_BIN`; no real sessions in tests.
 - `node --test test/` fails on Node 24 (treated as a file); the script uses the `"test/*.test.js"` glob.
 - Files written by subagents may have CRLF endings; string-replace scripts must handle that.
 - The server does not hot reload with `npm start`; restart after server changes (check no runs are `running` first).
 
-## Status (2026-10-19)
+## Status (2026-10-21)
 
-Phases A to C done. Real end-to-end loop passed on the private sandbox repo `DewashishCodes/agent-crew-sandbox` (onboarding PR #1, order with PRs #4 and #5, both merged, order done; about 115k tokens).
+v2 (docs/PLAN-V2.md, E1 to E5) implemented. Verified on the sandbox: two agents in parallel (PRs #12, #13), an owner message injected mid-task and acted on, permission prompts answered from Inbox and from the run route, pause and resume, take over and hand back (session resumed with --resume), a quick task, a crew_post between agents. Earlier: MVP loop (onboarding PR #1, PRs #4, #5).
 
-Not yet verified: two agents truly in parallel (that plan was sequential), Reviewer/QA rejection and the 2-failure block with real sessions, kill switch on live runs, UI at 380px in a browser, push notifications.
+Not yet verified live: crew_ask (blocking answers), permission timeout, removing an agent mid-run, Kill from the Wall, file lock between two real orders, the Wall in a browser at 380px, push notifications.
 
-## Next (Phase D)
+## Next (Phase D, still open)
 
 1. HTTPS for phone access: Tailscale serve (recommended) or a cloudflared tunnel. Ask the owner which.
 2. Install the PWA on the phone, turn on notifications, confirm a push arrives.
-3. Run an order with two independent tasks to see parallel agents; try a rejection path and the kill switch.
+3. Try a Reviewer rejection path and the kill switch on live runs (parallel agents are verified).
 4. Optional: push this repo to GitHub (no remote yet), add a project settings screen (PATCH /api/projects/:id exists), login rate limit.
 
 Skipped for MVP on purpose: autonomy levels 2 and 3, GitHub App and webhooks, schedules, Usage screen, templates, contracts checking, collaborators.

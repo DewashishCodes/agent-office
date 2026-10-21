@@ -214,3 +214,54 @@ Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once
 - Inbox: open items newest first, one-tap actions per kind (see API), link to GitHub, answer box for questions. Toggle to show resolved.
 - Projects screen when there is no project yet: input "owner/repo" -> POST /api/projects, show onboarding status.
 - PWA: manifest (name "Agent Crew", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
+
+## v2 additions (docs/PLAN-V2.md, phases E1 to E5)
+
+These override the MVP notes above where they disagree.
+
+### Runner (server/runner.js)
+Sessions run with `--input-format stream-json --include-partial-messages --replay-user-messages --permission-prompt-tool stdio`; stdin stays open. The prompt is the first user message.
+```js
+runClaude(opts) -> Promise<{ ok, text, session_id, input_tokens, output_tokens, cost_usd, run_id, stopped }>
+  // new opts: permissionPolicy(tool, input) -> 'allow'|'deny'|'ask', mcp (crew tool names), keepOpen
+  // disallowedTools go to --settings permissions.deny and --disallowedTools
+  // resolves once per run, across respawns; stopped = killed on purpose, never count it as an attempt
+sendToRun(run_id, text, { priority = 'next' })   // owner message; respawns with --resume when the child is gone
+interruptRun(run_id)                             // state paused, process kept; 5s without reply -> child killed, row kept
+resumeRun(run_id, text?)                         // continue; the next result ends the run
+handoffRun(run_id) -> { cwd, session_id, command } // child stopped, state handed_off
+answerPermission(run_id, request_id, allow, { message })
+getRunEvents(run_id, { after } | { tail })
+killRun(run_id), killProject(project_id), isLive, canDeliver, runForToken, liveRuns, describe
+```
+Run `state` (while `status = 'running'`): `running | waiting | paused | handed_off`. `pending_permission` is a JSON array of open requests. `total_cost_usd` is cumulative per process, so cost = earlier processes + latest result. A `can_use_tool` the policy answers `ask` becomes an Inbox item of kind `permission` (`run_id`, `ref` = request_id), denied after `settings.permission_timeout_min`.
+
+Permission modes: task and QA agents `acceptEdits` (+ policy), `bypassPermissions` only when `agent.permissions.autonomous`; Reviewer and Orchestrator `dontAsk`. QA denies Edit/Write. Deny rules: `scheduler.denyRules(project)`.
+
+### Rules (server/rules.js)
+`permissionPolicy(settings, agent, tool, input, cwd)`, `overlaps(filesA, filesB)`; `matchAgent` prefers `task.plan_agent` (or `task.agent`), then role, then any covering agent.
+
+### Crew MCP (server/crewmcp.js, mounted at `/mcp/:token`, loopback only)
+Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task_status(task_id?)`. `to` is an agent name, `all`, `orchestrator` or `owner`. Exports `CREW_TOOLS`, `mcpNames`, `mcpHandler`, `answerFromOwner(inboxItem, text)`, `takeQueued(agent_id)`. Orchestrator gets post/read, Reviewer read, task and QA agents all four.
+
+### Schema
+- `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
+- `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
+- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`. `inbox`: `run_id`, `ref`.
+- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex).
+
+### Routes
+| Method | Path | Does |
+| --- | --- | --- |
+| GET | /api/projects/:id/wall | agents with newest run, open orders with task counts, pending permissions, last 50 crew messages |
+| GET | /api/runs/:id, /api/runs/:id/events?after=&tail= | run row, transcript rows |
+| POST | /api/runs/:id/send `{text}`, /interrupt, /resume `{text?}`, /handoff, /kill, /permission `{request_id, allow, message?}` | intervention; kill blocks the task without an attempt |
+| POST | /api/projects/:id/tasks `{agent, title, description?, acceptance?, files?}` | quick task: one-task order for a named agent |
+| ALL | /mcp/:token | crew MCP |
+Inbox: `permission` items take `allow | deny | dismiss`; `question:answer` on an agent's item goes back to that agent.
+
+### Events
+`run_event {run_id, seq, type, json, created_at}`, `run_delta {run_id, text}` (live text, not stored), `crew_message` (row with from_name, to_name).
+
+### Plans and scheduling
+Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends_on` may hold `"order:<id>/<key>"`. A ready task waits while a task of another order with overlapping files is in progress, review or QA (`wait_reason`). Restarts and removals never count an attempt; review and QA cut off by a restart or the kill switch run again (`resumeChecks`). A retry after review feedback resumes the last clean task session.
