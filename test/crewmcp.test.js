@@ -58,6 +58,18 @@ test('crew_post to an idle agent queues the message for its next task', async ()
   assert.equal(all('SELECT delivered FROM crew_messages')[0].delivered, 1)
 })
 
+test('takeQueued drops messages about finished tasks', () => {
+  const order_id = insert('orders', { project_id, text: 'o' })
+  const done = insert('tasks', { project_id, order_id, title: 'old', role: 'x', status: 'done' })
+  const open = insert('tasks', { project_id, order_id, title: 'new', role: 'x' })
+  insert('crew_messages', { project_id, from_agent_id: alice, to_agent_id: bob, task_id: done, text: 'stale question' })
+  insert('crew_messages', { project_id, from_agent_id: alice, to_agent_id: bob, task_id: open, text: 'still relevant' })
+  const out = takeQueued(bob)
+  assert.doesNotMatch(out, /stale/)
+  assert.match(out, /still relevant/)
+  assert.equal(all('SELECT COUNT(*) n FROM crew_messages WHERE to_agent_id = ? AND delivered = 0', bob)[0].n, 0)
+})
+
 test('unknown recipient is a tool error, unknown token is 401', async () => {
   const r = await (await call({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'crew_post', arguments: { to: 'Zed', text: 'hi' } } })).json()
   assert.equal(r.result.isError, true)

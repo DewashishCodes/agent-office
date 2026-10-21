@@ -168,7 +168,9 @@ export function answerFromOwner(item, text) {
 export function takeQueued(agent_id) {
   const rows = all('SELECT * FROM crew_messages WHERE to_agent_id = ? AND delivered = 0 ORDER BY id', agent_id)
   for (const m of rows) markDelivered(m.id)
-  return rows.map(m => `- ${nameOf(m.from_agent_id)}${m.task_id ? ` (task #${m.task_id})` : ''}: ${m.text}`).join('\n')
+  // A message about a task that already passed or was merged is stale; answering it only burns tokens.
+  const fresh = rows.filter(m => !m.task_id || getTask(m.task_id)?.status !== 'done')
+  return fresh.map(m => `- ${nameOf(m.from_agent_id)}${m.task_id ? ` (task #${m.task_id})` : ''}: ${m.text}`).join('\n')
 }
 
 const LOOPBACK = ['127.0.0.1', '::1', '::ffff:127.0.0.1']

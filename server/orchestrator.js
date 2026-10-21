@@ -1,9 +1,9 @@
-import { all, get, update, insert, getProject, getOrder, activeAgents, setTask, setOrder, log, addMessage, addInbox, resolveInbox } from './db.js'
+import { all, get, insert, getProject, getOrder, activeAgents, setTask, setOrder, log, addMessage, addInbox, resolveInbox } from './db.js'
 import { emit } from './bus.js'
 import { runClaude } from './runner.js'
 import { ensureClone, pullDefault, createIssue, prDiff } from './github.js'
 import { kick } from './scheduler.js'
-import { parseReply, parseVerdict, matchAgent, findCycle } from './rules.js'
+import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder } from './rules.js'
 
 export { parseReply }
 
@@ -86,7 +86,20 @@ ${lines.join('\n')}`
 
 const lead = agents => agents.find(a => a.role === 'orchestrator')
 
-// One Orchestrator session per project at a time: two messages must not resume the same session in parallel.
+// Every request is a fresh session: resuming one ever-growing chat re-read its whole history on each call and cost
+// more than the work it planned. The recent chat and finished orders come in the prompt instead.
+function withChat(project_id, before_id, text) {
+  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, before_id)
+  const done = all(`SELECT id, text, plan, status FROM orders WHERE project_id = ? AND status IN ('done', 'ready_to_merge') ORDER BY id DESC LIMIT 5`, project_id)
+  const who = { user: 'Owner', orchestrator: 'You', system: 'Crew' }
+  return [
+    done.length && `# Recently finished orders\n\n${done.map(o => `- #${o.id} ${o.plan?.summary || o.text} (${o.status})`).join('\n')}`,
+    msgs.length && `# Recent chat (for context; it may be about other things)\n\n${msgs.map(m => `${who[m.role] || m.role}: ${m.text.slice(0, 800)}${m.order_id ? ` [plan for order #${m.order_id}]` : ''}`).join('\n\n')}`,
+    `# The owner now says\n\n${text}`,
+  ].filter(Boolean).join('\n\n')
+}
+
+// One Orchestrator run per project at a time, in order; prompts may be functions so a queued request sees the replies before it.
 const asking = new Map()
 const waiting = new Map()
 function ask(project_id, ...rest) {
@@ -100,33 +113,27 @@ function ask(project_id, ...rest) {
 // An agent asks mid-task through crew_ask; the answer goes back to it and shows in the chat as a crew line.
 export async function askFromAgent(project_id, agent, task, question) {
   const about = task ? ` while working on task #${task.id} "${task.title}"` : ''
-  const r = await ask(project_id, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]\n\n${question}`)
+  const plan = task && getOrder(task.order_id)?.plan
+  const r = await ask(project_id, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]${plan ? `\n\nThe plan this task belongs to:\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`` : ''}\n\n${question}`)
   const answer = r.ok ? parseReply(r.text).text || '(no answer)' : `The Orchestrator could not answer: ${String(r.text).slice(0, 500)}`
   addMessage(project_id, 'system', `${agent?.name || 'An agent'} asked the Orchestrator${about}: ${question}\n\nAnswer: ${answer}`)
   return answer
 }
 
-// Runs the Orchestrator in the clone. chat=true resumes and stores the chat session.
-async function askNow(project_id, prompt, { kind = 'orchestrator', chat = true } = {}) {
+// Runs the Orchestrator in a fresh session on the clone.
+async function askNow(project_id, prompt, { kind = 'orchestrator' } = {}) {
   let project = getProject(project_id)
   if (!project.local_path) await ensureClone(project)
   await pullDefault(getProject(project_id))
   project = getProject(project_id)
   const agents = activeAgents(project_id), orch = lead(agents)
   const base = {
-    project_id, agent_id: orch?.id ?? null, kind, cwd: project.local_path, prompt,
+    project_id, agent_id: orch?.id ?? null, kind, cwd: project.local_path, prompt: typeof prompt === 'function' ? prompt() : prompt,
     systemPrompt: SYSTEM_ORCH(orch, project, agents), model: orch?.model || 'opus', effort: orch?.effort || 'high',
     allowedTools: ['Read', 'Grep', 'Glob', 'mcp__crew__crew_post', 'mcp__crew__crew_read'], permissionMode: 'dontAsk',
     mcp: ['crew_post', 'crew_read'],
   }
-  const resume = chat ? project.orchestrator_session_id : null
-  let r = await runClaude({ ...base, resume })
-  if (!r.ok && resume) r = await runClaude(base)
-  if (chat && r.ok && r.session_id && r.session_id !== project.orchestrator_session_id) {
-    update('projects', project_id, { orchestrator_session_id: r.session_id })
-    emit('project', project_id, getProject(project_id))
-  }
-  return r
+  return runClaude(base)
 }
 
 const openPlanItems = order_id => all(`SELECT id FROM inbox WHERE order_id = ? AND kind = 'plan' AND status = 'open'`, order_id)
@@ -144,11 +151,11 @@ function offerPlan(project_id, order_id, plan) {
 }
 
 export async function chat(project_id, text) {
-  addMessage(project_id, 'user', text)
+  const msg_id = addMessage(project_id, 'user', text)
   if (waiting.get(project_id) > 0) addMessage(project_id, 'orchestrator', 'Queued: I will get to this right after the current request.')
   else if (ORDER_WORDS.test(text)) addMessage(project_id, 'orchestrator', 'Got it, looking at the repo.')
   try {
-    const r = await ask(project_id, text)
+    const r = await ask(project_id, () => withChat(project_id, msg_id, text))
     if (!r.ok) throw new Error(r.text || 'session failed')
     const { text: reply, plan } = parseReply(r.text)
     if (!plan?.tasks.length) return void addMessage(project_id, 'orchestrator', reply || '(no answer)')
@@ -265,9 +272,15 @@ export async function integrateOrder(order_id) {
   const tasks = all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', order_id)
   const project = getProject(pid)
   let notes = ''
-  // One pull request has nothing to fit together, so the Orchestrator round trip is skipped.
-  if (tasks.filter(t => t.pr_number && !t.merged).length < 2) notes = 'Single pull request, no integration check needed.'
-  else try {
+  const open = tasks.filter(t => t.pr_number && !t.merged)
+  const chain = open.length > 1 && chainOrder(open)
+  // One PR, or PRs that build on each other, have nothing left to fit together: no Orchestrator round trip.
+  if (open.length < 2) notes = 'Single pull request, no integration check needed.'
+  else if (chain) {
+    const pr = id => `#${tasks.find(t => t.id === id).pr_number}`
+    tasks.sort((a, b) => (chain.indexOf(a.id) + 1 || 1e9) - (chain.indexOf(b.id) + 1 || 1e9))
+    notes = `These PRs build on each other: ${pr(chain.at(-1))} already contains the others and passed review and QA with them. Merge in this order: ${chain.map(pr).join(', ')}.`
+  } else try {
     const diffs = []
     for (const t of tasks.filter(t => t.pr_number && !t.merged)) {
       diffs.push(`## PR #${t.pr_number}: ${t.title} (task ${t.plan_key}, depends on ${t.depends_on.map(id => tasks.find(x => x.id === id)?.plan_key).join(', ') || 'nothing'})\n\n\`\`\`diff\n${await prDiff(project, t.pr_number)}\n\`\`\``)
@@ -287,7 +300,7 @@ Reply with a short plain-language note for the owner, then end with one fenced j
 \`\`\`json
 {"verdict": "ok", "notes": "Merge #12 then #13. They fit together.", "merge_order": [12, 13]}
 \`\`\`
-Use "verdict": "problems" and explain in notes when something does not fit.`, { kind: 'integrate', chat: false })
+Use "verdict": "problems" and explain in notes when something does not fit.`, { kind: 'integrate' })
     const v = r.ok ? parseVerdict(r.text) : null
     notes = v?.notes || (r.ok ? parseReply(r.text).text : `Integration check failed: ${r.text}`)
     if (Array.isArray(v?.merge_order)) tasks.sort((a, b) => (v.merge_order.indexOf(a.pr_number) + 1 || 1e9) - (v.merge_order.indexOf(b.pr_number) + 1 || 1e9))

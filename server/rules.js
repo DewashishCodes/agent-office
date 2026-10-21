@@ -91,17 +91,42 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
   }
   if (tool === 'Bash') {
     const cmd = String(input.command || '').trim()
-    // Substitutions can hide any command inside an allowed one.
-    if (!cmd || /\$\(|`|<\(/.test(cmd)) return 'ask'
+    // Substitutions can hide any command inside an allowed one. Quoted heredocs ('EOF') and single quotes never expand.
+    const literal = cmd.replace(/<<-?\s*(['"])(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, '<<\n').replace(/'[^']*'/g, "''")
+    if (!cmd || /\$\(|`|<\(/.test(literal)) return 'ask'
+    // Heredoc bodies are data; quoted strings (commit messages, curl headers) keep their words but lose separators.
+    const bare = cmd.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(\n|$)/g, '<<\n')
+      .replace(/"(\\.|[^"\\])*"|'[^']*'/g, q => q.replace(/[;|&\n<>()]/g, ' '))
     // find -exec/-delete and redirects out of the worktree turn a harmless prefix into anything.
-    if (/\s-(exec|execdir|delete|ok)\b/.test(cmd) || /(^|[^0-9&])>+\s*(\/|~|[A-Za-z]:|\.\.)/.test(cmd)) return 'ask'
+    if (/\s-(exec|execdir|delete|ok)\b/.test(bare) || /(^|[^0-9&])>+\s*(?!\/dev\/null|\/tmp\/)(\/|~|[A-Za-z]:|\.\.)/.test(bare)) return 'ask'
     const ok = new RegExp(settings.auto_allow_bash)
-    // Heredoc bodies and quoted strings (commit messages) are data, not commands.
-    const bare = cmd.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(\n|$)/g, '<<\n').replace(/"(\\.|[^"\\])*"|'[^']*'/g, '""')
-    const parts = bare.split(/&&|\|\||;|\||\n/).map(s => s.trim()).filter(Boolean)
-    return parts.every(s => ok.test(s)) ? 'allow' : 'ask'
+    // Split on && || ; | newlines and a lone & (not 2>&1); drop subshell parens and VAR=value prefixes.
+    const parts = bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
+      .map(s => s.trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').replace(/^(\w+=\S*\s+)+/, '').trim()).filter(Boolean)
+    return parts.every(s => ok.test(s) || localCurl(s)) ? 'allow' : 'ask'
   }
   return 'ask'
+}
+
+const LOCAL_URL = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?([/?#]\S*)?$/
+const CURL_ARG = /^(-[wHXdmo]|--(write-out|header|request|data|data-raw|max-time|connect-timeout|output))$/
+
+// curl against this machine only (agents check their own dev server); uploads and config files still ask.
+function localCurl(part) {
+  const toks = (part.match(/"[^"]*"|'[^']*'|\S+/g) || []).map(t => t.replace(/^(["'])(.*)\1$/, '$2'))
+  if (toks[0] !== 'curl') return false
+  let local = false
+  for (let i = 1; i < toks.length; i++) {
+    const t = toks[i]
+    if (CURL_ARG.test(t)) {
+      const arg = toks[++i] ?? ''
+      if (/^(-o|--output)$/.test(t) && arg !== '/dev/null' && (/^([/~]|[A-Za-z]:)/.test(arg) || arg.includes('..'))) return false
+    } else if (t.startsWith('-')) {
+      if (/^(-T|--upload-file|-F|--form|-K|--config)$/.test(t)) return false
+    } else if (LOCAL_URL.test(t)) local = true
+    else return false
+  }
+  return local
 }
 
 // Glob prefix before the first wildcard segment: "web/src/**" -> "web/src".
@@ -114,4 +139,23 @@ const stem = g => {
 export function overlaps(a = [], b = []) {
   const under = (x, y) => !y || x === y || x.startsWith(y + '/')
   return a.some(f => b.some(g => { const x = stem(f), y = stem(g); return under(x, y) || under(y, x) }))
+}
+
+// When one task depends (directly or not) on every other, its branch already merged and passed review and QA with
+// all of them, so there is nothing left to fit together. Returns task ids in merge order (dependencies first), or null.
+export function chainOrder(tasks) {
+  const byId = new Map(tasks.map(t => [t.id, t]))
+  const reach = id => {
+    const seen = new Set(), stack = [...(byId.get(id).depends_on || [])]
+    while (stack.length) {
+      const d = stack.pop()
+      if (seen.has(d) || !byId.has(d)) continue
+      seen.add(d)
+      stack.push(...(byId.get(d).depends_on || []))
+    }
+    return seen.size
+  }
+  const size = new Map(tasks.map(t => [t.id, reach(t.id)]))
+  if (![...size.values()].includes(tasks.length - 1)) return null
+  return [...tasks].sort((a, b) => size.get(a.id) - size.get(b.id) || a.id - b.id).map(t => t.id)
 }

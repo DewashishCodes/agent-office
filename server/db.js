@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS projects (
   default_branch TEXT NOT NULL DEFAULT 'main',
   local_path TEXT,                        -- clone under data/repos
   settings TEXT NOT NULL DEFAULT '{}',    -- JSON, see DEFAULT_SETTINGS
-  orchestrator_session_id TEXT,           -- resumed for chat memory
+  orchestrator_session_id TEXT,           -- unused since v2: every Orchestrator request is a fresh session
   onboarding_status TEXT NOT NULL DEFAULT 'pending', -- pending | running | pr_open | done | failed
   onboarding_pr INTEGER,
   paused INTEGER NOT NULL DEFAULT 0,      -- kill switch state
@@ -179,7 +179,7 @@ export const DEFAULT_SETTINGS = {
   project_daily_token_budget: 20000000,
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
-  auto_allow_bash: '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|pytest|go test|cargo (test|build|check)|make)\\b',
+  auto_allow_bash: '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().

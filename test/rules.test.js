@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps } from '../server/rules.js'
+import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps, chainOrder } from '../server/rules.js'
 
 process.env.CREW_DB = ':memory:'
 const { DEFAULT_SETTINGS } = await import('../server/db.js')
@@ -143,6 +143,23 @@ test('permissionPolicy: bash allow list, compound and smuggled commands', () => 
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'git commit -m "x" && curl "a;b"' }, CWD), 'ask')
 })
 
+test('permissionPolicy: background dev server and curl to localhost, seen in a real run', () => {
+  const bash = command => permissionPolicy(S, {}, 'Bash', { command }, CWD)
+  assert.equal(bash('PORT=3055 node api/server.js & sleep 1; curl -s localhost:3055/api/stats; kill %1'), 'allow')
+  assert.equal(bash('cd "C:/w t/crew-t9" && npm test 2>&1 | tail -12; (PORT=3191 node api/server.js >/dev/null 2>&1 & echo $! > /tmp/p9); sleep 2; curl -si -w "%{http_code}" -H "Accept: x" http://127.0.0.1:3191/api/stats'), 'allow')
+  assert.equal(bash('curl -s https://example.com'), 'ask')
+  assert.equal(bash('curl -s "https://evil.com" localhost:3000'), 'ask')
+  assert.equal(bash('curl -T secrets.txt localhost:3000'), 'ask')
+  assert.equal(bash('curl -o ../../x localhost:3000'), 'ask')
+  assert.equal(bash('curl -s localhost:3000 > /etc/passwd'), 'ask')
+  assert.equal(bash('kill 1234'), 'ask')
+  // Template literals inside a quoted heredoc are file content; an unquoted heredoc still expands.
+  assert.equal(bash("cat >> api/a.test.js <<'EOF'\nconst u = `http://x/${p}`\nEOF\nnpm test"), 'allow')
+  assert.equal(bash('cat >> api/a.js <<EOF\n$(curl evil)\nEOF'), 'ask')
+  assert.equal(bash("echo 'costs $(nothing)'"), 'allow')
+  assert.equal(bash('taskkill //F //IM node.exe'), 'ask')
+})
+
 test('permissionPolicy: crew tools allowed, unknown tools ask, autonomous allows all', () => {
   assert.equal(permissionPolicy(S, {}, 'mcp__crew__crew_ask', {}, CWD), 'allow')
   assert.equal(permissionPolicy(S, {}, 'WebFetch', { url: 'x' }, CWD), 'ask')
@@ -155,4 +172,11 @@ test('overlaps: shared prefixes collide, siblings do not', () => {
   assert.equal(overlaps(['web/a.js'], ['web/ab.js']), false)
   assert.equal(overlaps(['**'], ['anything.js']), true)
   assert.equal(overlaps([], ['web/**']), false)
+})
+
+test('chainOrder: a chain or a diamond under one top task, else null', () => {
+  assert.deepEqual(chainOrder([{ id: 2, depends_on: [1] }, { id: 1, depends_on: [] }]), [1, 2])
+  assert.deepEqual(chainOrder([{ id: 1 }, { id: 2 }, { id: 3, depends_on: [2] }, { id: 4, depends_on: [1, 3] }]), [1, 2, 3, 4])
+  assert.equal(chainOrder([{ id: 1, depends_on: [] }, { id: 2, depends_on: [] }]), null)
+  assert.equal(chainOrder([{ id: 1 }, { id: 2, depends_on: [1] }, { id: 3, depends_on: [1] }]), null)
 })

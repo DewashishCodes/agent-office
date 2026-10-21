@@ -41,6 +41,7 @@ Rules:
 - Run the tests and build. Then check every acceptance criterion one by one with evidence (command output, file and line).
 - Fail only for failing tests or build, or an acceptance criterion that is not met. Tests that already failed before this change are not this task's fault: say so and do not fail for them.
 - If a command needs something unavailable (secrets, network, a service), say so and judge from what you can run.
+- To try a server, start it in the background and stop it in the same command: PORT=3456 node app.js & sleep 1; curl -s localhost:3456/x; kill %1. Never kill processes by name or with taskkill: the crew itself runs on node.
 - End your reply with exactly one fenced json block, nothing after it:
 \`\`\`json
 {"verdict": "pass", "report": "npm test: 42 passed. Criterion 1 met (server/auth.test.js). Criterion 2 met ..."}
@@ -49,6 +50,13 @@ or
 \`\`\`json
 {"verdict": "fail", "report": "npm test: 2 failed (auth.test.js 'rejects expired token': expected 401 got 200). Criterion 2 not met: ..."}
 \`\`\``
+
+const SYSTEM_CHECK = (a, project) => `${SYSTEM_QA(a, project)}
+
+This is a small task, so you also do the code review, before running the checks:
+- Call crew_read first: the author or the Orchestrator may have explained decisions there.
+- The diff is in the prompt. Fail it for real bugs, a missing or unmet acceptance criterion, a broken convention from CLAUDE.md, a security problem, or changes outside the task scope. Style nits are not a reason to fail; mention them as optional.
+- Put review findings and test evidence together in "report", each point specific: file, what is wrong, what to do.`
 
 const taskBlock = t => `# Task: ${t.title}
 
@@ -101,23 +109,35 @@ export async function checkTask(task_id) {
 
   let diff = await git(t.worktree, 'diff', `${t.base_sha}..HEAD`)
   if (diff.length > MAX_DIFF) diff = `${diff.slice(0, MAX_DIFF)}\n... diff truncated, read the files for the rest`
-  const review = await step(t, project, {
-    role: 'reviewer', kind: 'review', label: 'Review', system: SYSTEM_REVIEW,
-    prompt: `${context}\n\n## Diff (git diff ${t.base_sha}..HEAD)\n\n\`\`\`diff\n${diff}\n\`\`\`\n\nReview it and end with the json verdict block.`,
-    tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read'], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
-  })
-  if (review === 'fail' || review === 'stop') return
-
-  t = setTask(task_id, { status: 'qa' })
-  issueStatus(project, t, 'qa')
-  const qa = await step(t, project, {
+  const diffBlock = `## Diff (git diff ${t.base_sha}..HEAD)\n\n\`\`\`diff\n${diff}\n\`\`\``
+  const qa = {
     role: 'qa', kind: 'qa', label: 'QA', system: SYSTEM_QA,
     prompt: `${context}\n\nThe branch ${t.branch} is checked out here. Run the checks and end with the json verdict block.`,
     // Bash is left out of the allow list so each command goes through the permission policy; QA never edits.
     tools: ['Read', 'Grep', 'Glob'], mcp: CREW_TOOLS, mode: null, policy: true, disallowed: [...denyRules(project), 'Edit', 'Write', 'NotebookEdit'],
     okWord: 'pass', badWord: 'fail', field: 'report',
-  })
-  if (qa === 'fail' || qa === 'stop') return
+  }
+  const toQa = () => { t = setTask(task_id, { status: 'qa' }); issueStatus(project, t, 'qa') }
+
+  // S tasks get one session that reviews and tests: a second session would mostly repeat its own startup cost.
+  if (t.size === 'S' && pick(project.id, 'qa')) {
+    toQa()
+    const both = await step(t, project, {
+      ...qa, label: 'Review and QA', system: SYSTEM_CHECK,
+      prompt: `${context}\n\n${diffBlock}\n\nThe branch ${t.branch} is checked out here. Review the diff, run the checks, and end with the json verdict block.`,
+    })
+    if (both === 'fail' || both === 'stop') return
+  } else {
+    const review = await step(t, project, {
+      role: 'reviewer', kind: 'review', label: 'Review', system: SYSTEM_REVIEW,
+      prompt: `${context}\n\n${diffBlock}\n\nReview it and end with the json verdict block.`,
+      tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read'], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
+    })
+    if (review === 'fail' || review === 'stop') return
+    toQa()
+    const tested = await step(t, project, qa)
+    if (tested === 'fail' || tested === 'stop') return
+  }
 
   t = setTask(task_id, { status: 'done' })
   issueStatus(project, t, 'done')
