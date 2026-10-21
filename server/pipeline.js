@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { get, getProject, getTask, activeAgents, setTask, log } from './db.js'
 import { runClaude } from './runner.js'
-import { failTask, issueStatus, comment, git, TASK_DISALLOWED } from './scheduler.js'
+import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
 import { parseVerdict } from './rules.js'
 
@@ -63,7 +63,7 @@ const docs = async t => {
 const pick = (project_id, role) => activeAgents(project_id).find(a => a.role === role && a.status !== 'paused')
 
 // Runs one check. Returns 'pass' | 'fail' | 'skip' | 'stop'; on fail the task is already sent back.
-async function step(t, project, { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label }) {
+async function step(t, project, { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy }) {
   const a = pick(project.id, role)
   if (!a) {
     log(project.id, kind, `No active ${role} agent; skipped ${label} for "${t.title}"`, { task_id: t.id, order_id: t.order_id })
@@ -72,9 +72,10 @@ async function step(t, project, { role, kind, system, prompt, tools, mode, disal
   const r = await runClaude({
     project_id: project.id, agent_id: a.id, task_id: t.id, kind, cwd: t.worktree,
     prompt, systemPrompt: system(a, project), model: a.model, effort: a.effort,
-    allowedTools: tools, disallowedTools: disallowed, permissionMode: mode,
+    allowedTools: tools, disallowedTools: disallowed, permissionMode: mode ?? agentMode(a),
+    permissionPolicy: policy && policyFor(project, a, t.worktree),
   })
-  if (getProject(project.id).paused) return 'stop'
+  if (r.stopped || getProject(project.id).paused) return 'stop'
   if (!r.ok) { failTask(t.id, `${label} session crashed: ${String(r.text).slice(0, 1000)}`); return 'stop' }
   let v = parseVerdict(r.text)
   if (![okWord, badWord].includes(v?.verdict)) {
@@ -107,7 +108,8 @@ export async function checkTask(task_id) {
   const qa = await step(t, project, {
     role: 'qa', kind: 'qa', label: 'QA', system: SYSTEM_QA,
     prompt: `${context}\n\nThe branch ${t.branch} is checked out here. Run the checks and end with the json verdict block.`,
-    tools: ['Read', 'Grep', 'Glob', 'Bash'], mode: 'bypassPermissions', disallowed: TASK_DISALLOWED,
+    // Bash is left out of the allow list so each command goes through the permission policy; QA never edits.
+    tools: ['Read', 'Grep', 'Glob'], mode: null, policy: true, disallowed: [...denyRules(project), 'Edit', 'Write', 'NotebookEdit'],
     okWord: 'pass', badWord: 'fail', field: 'report',
   })
   if (qa === 'fail' || qa === 'stop') return

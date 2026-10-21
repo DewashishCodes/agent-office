@@ -1,4 +1,4 @@
-import { posix } from 'node:path'
+import { posix, relative, isAbsolute, resolve } from 'node:path'
 
 // Pure helpers. No db/runner/github imports so tests run without them.
 
@@ -41,7 +41,8 @@ export function matchAgent(agents, task) {
   const files = task.files || []
   // Agents with no owned paths (orchestrator, reviewer, qa) never take tasks.
   const ok = agents.filter(a => !a.removed_at && a.status !== 'paused' && a.owned_paths?.length && files.every(f => covered(f, a.owned_paths)))
-  return ok.find(a => a.role === task.role) || ok[0] || null
+  const name = task.plan_agent || task.agent
+  return (name && ok.find(a => a.name === name)) || ok.find(a => a.role === task.role) || ok[0] || null
 }
 
 export function readyTasks(tasks) {
@@ -67,3 +68,48 @@ export function findCycle(tasks) {
 
 export const isAllowed = (file, owned = [], protectedPaths = []) =>
   !protectedPaths.some(p => match(file, p)) && owned.some(o => match(file, o))
+
+// Path relative to cwd with forward slashes, or null when it points outside cwd.
+const inside = (cwd, p) => {
+  const r = relative(cwd, resolve(cwd, String(p))).replaceAll('\\', '/')
+  return r.startsWith('..') || isAbsolute(r) ? null : r
+}
+
+const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep', 'LS']
+
+// Decides a can_use_tool prompt: 'allow' | 'deny' | 'ask' (the owner decides). Deny rules in the CLI run before this.
+export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
+  if (agent?.permissions?.autonomous) return 'allow'
+  if (tool.startsWith('mcp__crew__')) return 'allow'
+  if (FILE_TOOLS.includes(tool)) {
+    const p = input.file_path || input.notebook_path || input.path
+    if (!p) return 'allow'
+    const r = inside(cwd, p)
+    if (r === null) return 'ask'
+    if (r && (settings.protected_paths || []).some(g => match(r, g))) return 'deny'
+    return 'allow'
+  }
+  if (tool === 'Bash') {
+    const cmd = String(input.command || '').trim()
+    // Substitutions can hide any command inside an allowed one.
+    if (!cmd || /\$\(|`|<\(/.test(cmd)) return 'ask'
+    // find -exec/-delete and redirects out of the worktree turn a harmless prefix into anything.
+    if (/\s-(exec|execdir|delete|ok)\b/.test(cmd) || /(^|[^0-9&])>+\s*(\/|~|[A-Za-z]:|\.\.)/.test(cmd)) return 'ask'
+    const ok = new RegExp(settings.auto_allow_bash)
+    const parts = cmd.split(/&&|\|\||;|\||\n/).map(s => s.trim()).filter(Boolean)
+    return parts.every(s => ok.test(s)) ? 'allow' : 'ask'
+  }
+  return 'ask'
+}
+
+// Glob prefix before the first wildcard segment: "web/src/**" -> "web/src".
+const stem = g => {
+  const segs = norm(g).split('/'), i = segs.findIndex(x => /[*?[{]/.test(x))
+  return (i < 0 ? segs : segs.slice(0, i)).filter(Boolean).join('/')
+}
+
+// Two file lists collide when one stem is a prefix of the other (an empty stem covers everything).
+export function overlaps(a = [], b = []) {
+  const under = (x, y) => !y || x === y || x.startsWith(y + '/')
+  return a.some(f => b.some(g => { const x = stem(f), y = stem(g); return under(x, y) || under(y, x) }))
+}

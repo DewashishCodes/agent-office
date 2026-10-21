@@ -132,7 +132,44 @@ CREATE TABLE IF NOT EXISTS push_subs (
   sub TEXT NOT NULL                       -- JSON PushSubscription
 );
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS run_events (
+  id INTEGER PRIMARY KEY,
+  run_id INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  type TEXT NOT NULL,                     -- stream line type (assistant | user | result | system | control_request) or owner | note
+  json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS run_events_run ON run_events (run_id, seq);
+CREATE TABLE IF NOT EXISTS crew_messages (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  from_agent_id INTEGER,                  -- null = the owner
+  to_agent_id INTEGER,                    -- null with to_owner 0 = everyone
+  to_owner INTEGER NOT NULL DEFAULT 0,
+  task_id INTEGER,
+  text TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'message',   -- message | question | answer
+  delivered INTEGER NOT NULL DEFAULT 0,   -- 1 once it reached a live session or a task prompt
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `)
+
+// CREATE TABLE IF NOT EXISTS never changes an existing table, so later columns are added here.
+function addColumn(table, col, def) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`)
+}
+addColumn('runs', 'turn', 'INTEGER NOT NULL DEFAULT 0')
+addColumn('runs', 'state', "TEXT NOT NULL DEFAULT 'running'")   // running | waiting | paused | handed_off, meaningful while status is running
+addColumn('runs', 'pending_permission', 'TEXT')                 // JSON array of open can_use_tool requests, or null
+addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name the plan assigned; matchAgent prefers it
+addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
+addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock
+addColumn('inbox', 'run_id', 'INTEGER')
+addColumn('inbox', 'ref', 'TEXT')                               // permission request_id
+
+// Transcripts of old runs are noise; merged work lives on GitHub.
+db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
 
 export const DEFAULT_SETTINGS = {
   protected_paths: ['.env*', '**/.env*', '**/*.pem', '**/*.key', '**/secrets/**', '.github/workflows/**', '**/migrations/**'],
@@ -140,10 +177,13 @@ export const DEFAULT_SETTINGS = {
   plan_approval_small: true,   // false = S-size plans auto-approve
   digest_hour: 8,              // local hour for the morning digest, null = off
   project_daily_token_budget: 20000000,
+  permission_timeout_min: 15,  // unanswered permission prompts are denied after this
+  question_timeout_min: 30,    // crew_ask to the owner gives up after this
+  auto_allow_bash: '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().
-const JSON_COLS = ['settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub']
+const JSON_COLS = ['settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub', 'pending_permission']
 
 function parse(r) {
   if (!r) return r
@@ -219,6 +259,12 @@ export function addInbox(project_id, kind, title, extra = {}) {
   const id = insert('inbox', { project_id, kind, title, ...extra })
   emit('inbox', project_id, { ...get('SELECT * FROM inbox WHERE id = ?', id), created: true })
   return id
+}
+
+export function addRunEvent(run_id, project_id, seq, type, json) {
+  const created_at = now()
+  insert('run_events', { run_id, seq, type, json, created_at })
+  emit('run_event', project_id, { run_id, seq, type, json, created_at })
 }
 
 export function resolveInbox(id) {

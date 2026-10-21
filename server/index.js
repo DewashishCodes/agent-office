@@ -4,11 +4,11 @@ import { join } from 'node:path'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, template, createAgent, seedRoster } from './roster.js'
-import { killProject, tokensToday, projectTokensToday } from './runner.js'
+import { killProject, killRun, tokensToday, projectTokensToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents } from './runner.js'
 import { repoInfo, mergePR } from './github.js'
 import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, markOnboarded } from './scheduler.js'
+import { start, kick, markMerged, markOnboarded, resumeChecks } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 
 if (!process.env.OWNER_TOKEN) {
@@ -143,6 +143,7 @@ app.post('/api/projects/:id/resume', (req, res) => {
   update('projects', p.id, { paused: 0 })
   log(p.id, 'resume', 'Project resumed')
   emit('project', p.id, getProject(p.id))
+  resumeChecks(p.id)
   kick()
   res.json({ ok: true })
 })
@@ -209,6 +210,50 @@ app.get('/api/tasks/:id', (req, res) => {
 app.post('/api/tasks/:id/retry', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
   res.json(retryTask(t.id))
+})
+
+// Runs: live transcript and intervention
+
+const runRow = req => found(get('SELECT * FROM runs WHERE id = ?', int(req.params.id)), 'run')
+
+app.get('/api/runs/:id', (req, res) => res.json(runRow(req)))
+
+app.get('/api/runs/:id/events', (req, res) => {
+  const r = runRow(req), { after, tail } = req.query
+  res.json(getRunEvents(r.id, tail ? { tail: Math.min(int(tail), 500) } : { after: after ? Number(after) || 0 : 0 }))
+})
+
+app.post('/api/runs/:id/send', (req, res) => {
+  sendToRun(runRow(req).id, str(req.body?.text, 'text'))
+  res.json({ ok: true })
+})
+
+app.post('/api/runs/:id/interrupt', async (req, res) => {
+  await interruptRun(runRow(req).id)
+  res.json({ ok: true })
+})
+
+app.post('/api/runs/:id/resume', (req, res) => {
+  const text = req.body?.text
+  resumeRun(runRow(req).id, typeof text === 'string' && text.trim() ? text : undefined)
+  res.json({ ok: true })
+})
+
+app.post('/api/runs/:id/handoff', async (req, res) => res.json(await handoffRun(runRow(req).id)))
+
+app.post('/api/runs/:id/kill', (req, res) => {
+  const r = runRow(req)
+  killRun(r.id)
+  // A stopped run is the owner's call, not a failed attempt; the task waits on the Board for a retry.
+  if (r.task_id) setTask(r.task_id, { status: 'blocked', notes: 'Stopped by the owner. Retry to start again.' })
+  log(r.project_id, 'kill', `Run #${r.id} stopped by the owner`, { task_id: r.task_id, agent_id: r.agent_id })
+  res.json({ ok: true })
+})
+
+app.post('/api/runs/:id/permission', (req, res) => {
+  const { request_id, allow, message } = req.body ?? {}
+  answerPermission(runRow(req).id, str(request_id, 'request_id'), allow === true, { message: typeof message === 'string' ? message : undefined })
+  res.json({ ok: true })
 })
 
 // Agents
@@ -300,7 +345,12 @@ app.post('/api/inbox/:id/action', async (req, res) => {
   const { action, text } = req.body ?? {}
   const key = `${item.kind}:${action}`
   let status = 200
-  if (action === 'dismiss' && item.kind !== 'plan') {
+  if (item.kind === 'permission') {
+    if (!['allow', 'deny', 'dismiss'].includes(action)) throw fail(400, `unknown action ${action} for permission`)
+    // A run that already ended leaves nothing to answer; the item still closes.
+    try { answerPermission(item.run_id, item.ref, action === 'allow', { message: typeof text === 'string' && text.trim() ? text : undefined }) }
+    catch (e) { resolveInbox(item.id); throw e }
+  } else if (action === 'dismiss' && item.kind !== 'plan') {
     // nothing to run
   } else if (key === 'plan:approve') await approvePlan(found(item.order_id, 'order'))
   else if (key === 'plan:reject') await rejectPlan(found(item.order_id, 'order'))

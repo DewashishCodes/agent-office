@@ -8,11 +8,18 @@ import { runClaude, tokensToday, projectTokensToday, runningCount } from './runn
 import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
-import { matchAgent, readyTasks, isAllowed } from './rules.js'
+import { matchAgent, readyTasks, isAllowed, permissionPolicy } from './rules.js'
 
 export { matchAgent, readyTasks, isAllowed }
 
-export const TASK_DISALLOWED = ['Bash(git push*)', 'Bash(gh *)', 'Read(.env*)', 'Read(**/.env*)']
+export const TASK_DISALLOWED = ['Bash(git push *)', 'Bash(git push*)', 'Bash(gh *)', 'Read(./.env)', 'Read(./.env.*)', 'Read(.env*)', 'Read(**/.env*)']
+
+// Deny rules for task and QA runs: the fixed list plus every protected path, read or edit.
+export const denyRules = project => [...TASK_DISALLOWED, ...project.settings.protected_paths.flatMap(p => [`Read(${p})`, `Edit(${p})`])]
+
+// acceptEdits asks for anything outside the policy; autonomous agents keep the old bypass behavior.
+export const agentMode = agent => (agent.permissions?.autonomous ? 'bypassPermissions' : 'acceptEdits')
+export const policyFor = (project, agent, cwd) => (tool, input) => permissionPolicy(project.settings, agent, tool, input, cwd)
 export const MAX_ATTEMPTS = 2
 
 const pexec = promisify(execFile)
@@ -119,10 +126,11 @@ async function runTask(task_id) {
   const r = await runClaude({
     project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path,
     prompt: await taskPrompt(t, agent), systemPrompt: SYSTEM_TASK(agent, t, project),
-    model: agent.model, effort: agent.effort, permissionMode: 'bypassPermissions', disallowedTools: TASK_DISALLOWED,
+    model: agent.model, effort: agent.effort, permissionMode: agentMode(agent), disallowedTools: denyRules(project),
+    permissionPolicy: policyFor(project, agent, wt.path),
   })
-  // Kill switch already put the task back to planned; do not count it as an attempt.
-  if (getProject(project.id).paused) return
+  // Kill switch, removal or the owner stopping the run already put the task where it belongs; not an attempt.
+  if (r.stopped || getProject(project.id).paused) return
   if (!r.ok) return failTask(task_id, `The session crashed: ${String(r.text).slice(0, 2000)}`)
 
   await commitAll(wt.path, `${t.title} (crew task ${t.id})`)
@@ -250,11 +258,24 @@ async function poll() {
   } finally { polling = false }
 }
 
-// Boot: no child survives a restart, so running rows are stale and mid-flight work goes back to planned.
-function recover() {
-  run(`UPDATE runs SET status = 'error', ended_at = ? WHERE status = 'running'`, now())
+// Review and QA that were cut off (restart, kill switch) run again from the review step.
+export function resumeChecks(project_id = null) {
+  const rows = all(`SELECT id, worktree, base_sha FROM tasks WHERE status IN ('in_review', 'qa') AND (? IS NULL OR project_id = ?)`, project_id, project_id)
+  for (const t of rows) {
+    if (get(`SELECT 1 FROM runs WHERE task_id = ? AND status = 'running'`, t.id)) continue
+    if (!t.worktree || !t.base_sha) { setTask(t.id, { status: 'planned' }); continue }
+    setTask(t.id, { status: 'in_review' })
+    checkTask(t.id).catch(e => failTask(t.id, `Error: ${e.message}`))
+  }
+}
+
+// Boot: no child survives a restart, so running rows are stale. A restart is never the task's fault, so no attempt is counted.
+export function recover() {
+  run(`UPDATE runs SET status = 'error', pending_permission = NULL, ended_at = ? WHERE status = 'running'`, now())
+  run(`UPDATE inbox SET status = 'done', resolved_at = ? WHERE kind = 'permission' AND status = 'open'`, now())
   for (const a of all(`SELECT id FROM agents WHERE status = 'working'`)) setAgent(a.id, { status: 'idle' })
-  for (const t of all(`SELECT id FROM tasks WHERE status IN ('in_progress', 'in_review', 'qa')`)) failTask(t.id, 'Interrupted by a server restart.')
+  for (const t of all(`SELECT id FROM tasks WHERE status = 'in_progress'`)) setTask(t.id, { status: 'planned' })
+  resumeChecks()
   for (const o of all(`SELECT id FROM orders WHERE status = 'planning'`)) setOrder(o.id, { status: 'awaiting_approval' })
   for (const o of all(`SELECT id FROM orders WHERE status = 'in_progress'`)) {
     const c = get(`SELECT COUNT(*) AS n, SUM(status != 'done') AS open FROM tasks WHERE order_id = ?`, o.id)

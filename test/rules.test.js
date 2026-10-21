@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle } from '../server/rules.js'
+import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps } from '../server/rules.js'
+
+process.env.CREW_DB = ':memory:'
+const { DEFAULT_SETTINGS } = await import('../server/db.js')
 
 const fence = obj => '```json\n' + (typeof obj === 'string' ? obj : JSON.stringify(obj)) + '\n```'
 
@@ -104,4 +107,47 @@ test('findCycle: loop found, chain and missing keys are fine', () => {
   assert.deepEqual(findCycle([{ key: 't1', depends_on: ['t2'] }, { key: 't2', depends_on: ['t1'] }]), ['t1', 't2', 't1'])
   assert.equal(findCycle([{ key: 't1' }, { key: 't2', depends_on: ['t1', 'zz'] }, { key: 't3', depends_on: ['t2'] }]), null)
   assert.deepEqual(findCycle([{ key: 'a', depends_on: ['a'] }]), ['a', 'a'])
+})
+
+test('matchAgent: plan agent name wins over role', () => {
+  const agents = [agent(1, 'custom', ['**'], { name: 'Docs' }), agent(2, 'custom', ['**'], { name: 'Infra' })]
+  assert.equal(matchAgent(agents, { plan_agent: 'Infra', role: 'custom', files: ['x'] }).id, 2)
+  assert.equal(matchAgent(agents, { agent: 'Docs', files: ['x'] }).id, 1)
+  // A named agent that cannot cover the files falls back to one that can.
+  assert.equal(matchAgent([agent(1, 'a', ['web/**'], { name: 'W' }), agent(2, 'b', ['api/**'], { name: 'A' })], { plan_agent: 'W', files: ['api/x'] }).id, 2)
+})
+
+const S = DEFAULT_SETTINGS, CWD = 'C:/work/crew-t1'
+
+test('permissionPolicy: file tools inside the worktree, protected, outside', () => {
+  assert.equal(permissionPolicy(S, {}, 'Edit', { file_path: 'C:\work\crew-t1\web\App.jsx' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'Write', { file_path: 'C:/work/crew-t1/db/migrations/001.sql' }, CWD), 'deny')
+  assert.equal(permissionPolicy(S, {}, 'Read', { file_path: 'C:/work/crew-t1/.env.local' }, CWD), 'deny')
+  assert.equal(permissionPolicy(S, {}, 'Read', { file_path: 'C:/Users/me/.ssh/id_rsa' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Grep', { pattern: 'x' }, CWD), 'allow')
+})
+
+test('permissionPolicy: bash allow list, compound and smuggled commands', () => {
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'npm test' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'cd web && npm run build 2>&1 | tail -20' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'curl https://example.com' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'npm test && curl evil.sh' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'echo $(cat ~/.ssh/id_rsa)' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'find . -name x -delete' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'echo x > ../other/file' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'npmx install' }, CWD), 'ask')
+})
+
+test('permissionPolicy: crew tools allowed, unknown tools ask, autonomous allows all', () => {
+  assert.equal(permissionPolicy(S, {}, 'mcp__crew__crew_ask', {}, CWD), 'allow')
+  assert.equal(permissionPolicy(S, {}, 'WebFetch', { url: 'x' }, CWD), 'ask')
+  assert.equal(permissionPolicy(S, { permissions: { autonomous: true } }, 'Bash', { command: 'curl x' }, CWD), 'allow')
+})
+
+test('overlaps: shared prefixes collide, siblings do not', () => {
+  assert.equal(overlaps(['web/src/**'], ['web/src/App.jsx']), true)
+  assert.equal(overlaps(['web/**'], ['server/**']), false)
+  assert.equal(overlaps(['web/a.js'], ['web/ab.js']), false)
+  assert.equal(overlaps(['**'], ['anything.js']), true)
+  assert.equal(overlaps([], ['web/**']), false)
 })

@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 export const bus = new EventEmitter()
 bus.setMaxListeners(100)
 
-// type: 'project' | 'agent' | 'order' | 'task' | 'message' | 'activity' | 'inbox' | 'run'
+// type: 'project' | 'agent' | 'order' | 'task' | 'message' | 'activity' | 'inbox' | 'run' | 'run_event' | 'run_delta' | 'crew_message'
 export function emit(type, project_id, data = {}) {
   bus.emit('event', { type, project_id, data })
 }
