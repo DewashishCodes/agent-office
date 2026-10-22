@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, Empty, ErrorText, Sheet, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, useAction } from '../ui.jsx'
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from './Wall.jsx'
 import Office, { CrewThread } from '../components/Office.jsx'
@@ -135,6 +135,7 @@ function Orders({ pid, orders, needs, onNeeds }) {
     if (t) run(async () => { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } }); setText(''); setSent(true) })
   }
   const approve = id => run(() => api(`/orders/${id}/approve`, { method: 'POST', body: {} }))
+  const cancel = id => run(() => api(`/orders/${id}/cancel`, { method: 'POST' }))
   return (
     <>
       <div className="orders-head">
@@ -156,6 +157,10 @@ function Orders({ pid, orders, needs, onNeeds }) {
               ) : total > 0
                 ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
                 : <Badge status={o.status} />}
+              <More label={`Actions for ${o.plan?.summary || o.text}`}>
+                <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
+                <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
+              </More>
             </li>
           )
         }) : <li className="lane-empty">No open orders</li>}

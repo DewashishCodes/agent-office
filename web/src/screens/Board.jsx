@@ -16,7 +16,7 @@ export default function Board({ pid, project, orderId }) {
   const shown = (tasks || []).filter(t => (!agent || String(t.agent_id) === agent) && (!order || String(t.order_id) === order))
   // Phone list: one group per order, newest first, finished work hidden unless asked for.
   const groups = (orders || []).filter(o => !order || String(o.id) === order).map(o => ({
-    o, list: shown.filter(t => t.order_id === o.id && (showDone || t.status !== 'done')),
+    o, list: shown.filter(t => t.order_id === o.id && t.status !== 'canceled' && (showDone || t.status !== 'done')),
   })).filter(g => g.list.length)
   const card = t => <TaskCard key={t.id} t={t} onOpen={() => setOpenId(t.id)} />
 

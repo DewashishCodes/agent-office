@@ -160,7 +160,7 @@
 .needs-btn { min-height: 30px; padding: 0 10px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; background: var(--err); color: var(--surface); }
 .needs-btn.calm { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .order-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-.order-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.order-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 13.5px; }
 .order-line > a { color: var(--text); text-decoration: none; }
 .order-line > a:hover { color: var(--accent); }
 .progress { display: block; width: 90px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
@@ -196,3 +196,6 @@
   .window:nth-child(n + 3) { display: none; }
 }
 .lane-done { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--ok); }
+/* An open row menu must not be clipped by the scrolling list. */
+.order-list:has(.more[open]) { overflow: visible; }
+.order-line .more .menu { right: 0; top: auto; bottom: calc(100% + 2px); z-index: 20; }

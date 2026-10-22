@@ -10,7 +10,7 @@ import { killProject, killRun, tokensToday, projectTokensToday, sendToRun, inter
 import { repoInfo, mergePR } from './github.js'
 import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, markOnboarded, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
+import { start, kick, markMerged, markOnboarded, cancelOrder, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
 import { matchAgent } from './rules.js'
@@ -220,6 +220,13 @@ app.post('/api/orders/:id/revise', (req, res) => {
   res.status(202).json({ ok: true })
 })
 
+app.post('/api/orders/:id/cancel', (req, res) => {
+  const o = order(req)
+  if (['done', 'rejected', 'canceled'].includes(o.status)) throw fail(409, `That order is already ${o.status}`)
+  cancelOrder(o.id)
+  res.json({ ok: true })
+})
+
 app.post('/api/orders/:id/reject', async (req, res) => {
   await rejectPlan(order(req).id)
   res.json({ ok: true })
@@ -285,7 +292,7 @@ app.get('/api/projects/:id/wall', (req, res) => {
     run: get(`SELECT r.*, t.title task_title FROM runs r LEFT JOIN tasks t ON t.id = r.task_id
       WHERE r.agent_id = ? ORDER BY r.status = 'running' DESC, r.id DESC`, a.id) ?? null,
   }))
-  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status NOT IN ('done', 'rejected') ORDER BY id DESC`, p.id).map(o => ({
+  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status NOT IN ('done', 'rejected', 'canceled') ORDER BY id DESC`, p.id).map(o => ({
     ...o, counts: Object.fromEntries(all('SELECT status, COUNT(*) n FROM tasks WHERE order_id = ? GROUP BY status', o.id).map(c => [c.status, c.n])),
   }))
   const permissions = all(`SELECT r.id run_id, r.pending_permission, a.name agent_name FROM runs r LEFT JOIN agents a ON a.id = r.agent_id

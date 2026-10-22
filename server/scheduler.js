@@ -290,10 +290,24 @@ export function markMerged(task_id) {
   log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
   const left = get('SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0', t.order_id).n
-  if (!left && getOrder(t.order_id).status !== 'done') {
+  if (!left && !['done', 'canceled'].includes(getOrder(t.order_id).status)) {
     setOrder(t.order_id, { status: 'done' })
     log(t.project_id, 'order', 'Order done: every PR merged', { order_id: t.order_id })
   }
+}
+
+// The owner drops an order: its unfinished tasks stop for good and leave the board. Done tasks keep their PRs.
+export function cancelOrder(order_id) {
+  const o = getOrder(order_id)
+  const tasks = all(`SELECT id FROM tasks WHERE order_id = ? AND status != 'done'`, order_id)
+  const ids = new Set(tasks.map(t => t.id))
+  // stopped: the runner's caller must not count it as a failed attempt or retry it.
+  for (const r of liveRuns()) if (ids.has(r.task_id)) killRun(r.run_id)
+  for (const t of tasks) setTask(t.id, { status: 'canceled', wait_reason: null })
+  for (const i of all(`SELECT id FROM inbox WHERE status = 'open' AND (order_id = ? OR task_id IN (SELECT id FROM tasks WHERE order_id = ?))`, order_id, order_id)) resolveInbox(i.id)
+  setOrder(order_id, { status: 'canceled' })
+  log(o.project_id, 'order', `Order canceled: ${o.plan?.summary || o.text}`, { order_id })
+  kick()
 }
 
 export function markOnboarded(project_id) {

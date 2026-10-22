@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   text TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'planning', -- planning | awaiting_approval | in_progress | ready_to_merge | done | rejected
+  status TEXT NOT NULL DEFAULT 'planning', -- planning | awaiting_approval | in_progress | ready_to_merge | done | rejected | canceled
   plan TEXT,                               -- JSON plan from the Orchestrator, see CONTRACTS.md
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   depends_on TEXT NOT NULL DEFAULT '[]',  -- JSON task ids (numbers)
   files TEXT NOT NULL DEFAULT '[]',       -- JSON paths/globs the task expects to touch
   agent_id INTEGER REFERENCES agents(id),
-  status TEXT NOT NULL DEFAULT 'planned', -- planned | in_progress | in_review | qa | done | blocked
+  status TEXT NOT NULL DEFAULT 'planned', -- planned | in_progress | in_review | qa | done | blocked | canceled
   attempts INTEGER NOT NULL DEFAULT 0,
   notes TEXT NOT NULL DEFAULT '',         -- feedback from Reviewer/QA/gate for the next attempt
   branch TEXT,
