@@ -375,3 +375,26 @@ h1 .count { vertical-align: middle; }
 .model-effort { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
 .model-effort img { height: 40px; image-rendering: pixelated; align-self: center; }
 .model-effort .error { grid-column: 1 / -1; }
+
+/* Command chats: a list of conversations beside the thread, like an LLM app. Phones open the list in a sheet. */
+.chat-side { display: none; }
+.chat-head { display: flex; align-items: center; gap: 8px; }
+.chat-head h1 { font-size: 16px; margin: 0; }
+.chat-empty { text-align: center; padding: 10vh 8px 0; }
+.chat-empty h2 { font-size: 22px; margin-bottom: 6px; }
+.chat-list { display: flex; flex-direction: column; gap: 10px; }
+.chat-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-list li button {
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px; width: 100%; min-height: 44px; padding: 8px 10px;
+  border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.chat-list li button:hover { background: var(--surface-2); }
+.chat-list li button[aria-current] { background: var(--accent-soft); }
+.msg.orchestrator .bubble { background: none; border-color: transparent; padding: 2px 0; }
+.composer textarea { border-radius: 14px; padding: 12px 14px; resize: none; }
+@media (min-width: 900px) {
+  .chat-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; }
+  .chat-side { display: block; position: sticky; top: 0; height: 100dvh; overflow: auto; padding: 12px 10px; border-right: 1px solid var(--border); }
+  .chats-btn { display: none; }
+  .chat { width: 100%; }
+}

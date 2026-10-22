@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
+
+// The open chat per project and floor. Kept across screens but not across reloads, so every visit starts a new chat.
+const openChat = {}
+// Phones keep Enter for new lines; the Send button sends.
+const enterSends = !matchMedia('(pointer: coarse)').matches
 
 export default function Command({ pid, running, floors, floor: saved, setFloor }) {
   const [agents] = useData(`/projects/${pid}/agents`, on(pid, 'agent'))
@@ -13,7 +18,15 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
   const floor = currentFloor(open, saved)
   const lead = agents?.find(a => a.role === 'orchestrator' && a.floor === floor.key)
   const leadName = lead?.name || 'Orchestrator'
-  const [messages, , error] = useData(agents && `/projects/${pid}/messages?floor=${floor.key}`, on(pid, 'message'))
+  const slot = `${pid}:${floor.key}`
+  const [chatId, setChatState] = useState(openChat[slot] ?? null)
+  useEffect(() => setChatState(openChat[slot] ?? null), [slot])
+  const [listOpen, setListOpen] = useState(false)
+  const pick = id => { openChat[slot] = id; setChatState(id); setListOpen(false); atBottom.current = true }
+  const [chats] = useData(agents && `/projects/${pid}/chats?floor=${floor.key}`, on(pid, 'chat', 'message'))
+  const [loaded, , error] = useData(chatId && `/projects/${pid}/messages?chat=${chatId}`, on(pid, 'message'))
+  const messages = chatId ? loaded : []
+  const title = chats?.find(c => c.id === chatId)?.title || 'New chat'
   const [text, setText] = useState('')
   const [run, busy, sendError] = useAction()
   const [orchRun, setOrchRun] = useState(null)
@@ -45,25 +58,37 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
     if (!t) return
     atBottom.current = true
     run(async () => {
-      await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t, floor: floor.key } })
+      const r = await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t, floor: floor.key, chat_id: chatId } })
+      if (!chatId && r?.chat_id) pick(r.chat_id)
       setText('')
       setWaiting(true)
     })
   }
 
   const thinking = orchRun || waiting
+  const list = <ChatList chats={chats} current={chatId} onPick={pick} />
   return (
+    <div className="chat-shell">
+      <aside className="chat-side">{list}</aside>
     <section className="chat" style={{ '--floor': floor.color }}>
       {open.length > 0 && (
         <div className="chat-floors">
           <FloorBar open={open} agents={agents} floor={floor.key} onPick={setFloor} onAdd={() => setAdding(true)} canAdd={open.length < (floors?.length || 0)} />
         </div>
       )}
+      <div className="chat-head">
+        <Button small variant="ghost" className="chats-btn" onClick={() => setListOpen(true)}>Chats</Button>
+        <h1 className="grow clip">{title}</h1>
+        {chatId && <Button small onClick={() => pick(null)}>New chat</Button>}
+      </div>
       <ErrorText error={error} />
       {messages && messages.length === 0 && (
-        <Empty>{floor.key === 'tech'
-          ? `Give ${leadName} an order, for example: Add Google sign-in. It replies with a plan for you to approve.`
-          : `Give ${leadName} an order for the ${floor.name} floor. ${floor.blurb} It replies with a plan for you to approve.`}</Empty>
+        <div className="chat-empty">
+          <h2>What should {leadName} work on?</h2>
+          <p className="muted">{floor.key === 'tech'
+            ? 'Give an order, for example: Add Google sign-in. You get a plan to approve before anyone starts.'
+            : `Give an order for the ${floor.name} floor. ${floor.blurb} You get a plan to approve before anyone starts.`}</p>
+        </div>
       )}
       <ol className="messages">
         {messages?.map(m => (
@@ -77,15 +102,37 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
       {thinking && <Working text={`${leadName} is thinking`} lastEvent={orchRun?.last_event} since={orchRun?.started_at} />}
       <form className="composer" onSubmit={send}>
         <label className="sr-only" htmlFor="order-text">Order or question for {leadName}</label>
-        <textarea id="order-text" rows="2" placeholder={`Order or question for ${leadName} (Ctrl+Enter sends)`} value={text}
+        <textarea id="order-text" rows="2" placeholder={`Message ${leadName}${enterSends ? ' (Enter sends, Shift+Enter for a new line)' : ''}`} value={text}
           onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send() }} />
+          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || (enterSends && !e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); send() } }} />
         <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Send</Button>
       </form>
       <ErrorText error={sendError} />
+      {listOpen && <Sheet title="Chats" onClose={() => setListOpen(false)}>{list}</Sheet>}
       {adding && <OpenFloorSheet pid={pid} floors={floors} open={open} templates={templates}
         onOpened={k => { setAdding(false); setFloor(k) }} onClose={() => setAdding(false)} />}
     </section>
+    </div>
+  )
+}
+
+function ChatList({ chats, current, onPick }) {
+  return (
+    <nav className="chat-list" aria-label="Chats">
+      <Button variant="primary" onClick={() => onPick(null)}>New chat</Button>
+      {chats?.length ? (
+        <ul>
+          {chats.map(c => (
+            <li key={c.id}>
+              <button type="button" aria-current={c.id === current || undefined} onClick={() => onPick(c.id)}>
+                <span className="clip">{c.title}</span>
+                <span className="muted small">{ago(c.updated_at)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : chats && <p className="muted small">No chats yet</p>}
+    </nav>
   )
 }
 
