@@ -49,6 +49,20 @@ const EDITABLE = {
   daily_token_budget: v => Number.isInteger(v) && v >= 0,
 }
 
+const count = (min, max = Infinity) => v => Number.isInteger(v) && v >= min && v <= max
+const regex = v => { try { return typeof v === 'string' && v.length < 4000 && !!new RegExp(v) } catch { return false } }
+// A bad value here (an invalid regex above all) would break every permission check, so each key is checked.
+const SETTINGS = {
+  protected_paths: isStrs,
+  autonomy: count(1, 1),
+  plan_approval_small: v => typeof v === 'boolean',
+  digest_hour: v => v === null || count(0, 23)(v),
+  project_daily_token_budget: count(0),
+  permission_timeout_min: count(1, 24 * 60),
+  question_timeout_min: count(1, 24 * 60),
+  auto_allow_bash: regex,
+}
+
 function profileFields(body) {
   for (const [k, v] of Object.entries(body)) {
     if (!EDITABLE[k]) throw fail(400, `${k} is not editable`)
@@ -132,6 +146,10 @@ app.patch('/api/projects/:id', (req, res) => {
   if (name !== undefined) f.name = str(name, 'name')
   if (settings !== undefined) {
     if (!isObj(settings)) throw fail(400, 'settings must be an object')
+    for (const [k, v] of Object.entries(settings)) {
+      if (!SETTINGS[k]) throw fail(400, `${k} is not a setting`)
+      if (!SETTINGS[k](v)) throw fail(400, `invalid ${k}`)
+    }
     f.settings = { ...p.settings, ...settings }
   }
   update('projects', p.id, f)
