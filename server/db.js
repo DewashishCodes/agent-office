@@ -135,6 +135,14 @@ CREATE TABLE IF NOT EXISTS push_subs (
   sub TEXT NOT NULL                       -- JSON PushSubscription
 );
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS chats (        -- Command conversations; the lead only sees its own chat as context
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  floor TEXT NOT NULL DEFAULT 'tech',
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS run_events (
   id INTEGER PRIMARY KEY,
   run_id INTEGER NOT NULL,
@@ -205,6 +213,17 @@ addColumn('projects', 'source', "TEXT NOT NULL DEFAULT 'github'") // github | lo
 addColumn('projects', 'source_path', 'TEXT')                    // the owner's own folder; local_path is the crew clone
 addColumn('projects', 'proposal', 'TEXT')                       // JSON office proposal from the Onboarding agent
 addColumn('projects', 'rerun', 'INTEGER NOT NULL DEFAULT 0')    // 1 while a re-run of onboarding is in progress
+addColumn('messages', 'chat_id', 'INTEGER')                     // command messages only
+addColumn('orders', 'chat_id', 'INTEGER')                       // the chat the plan was made in
+
+// Command history from before chats becomes one "Earlier chat" per floor.
+for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, floor, MIN(created_at) first, MAX(created_at) last FROM messages
+  WHERE channel = 'command' AND chat_id IS NULL GROUP BY project_id, floor`).all()) {
+  const id = Number(db.prepare('INSERT INTO chats (project_id, floor, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+    .run(project_id, floor, 'Earlier chat', first, last).lastInsertRowid)
+  db.prepare(`UPDATE messages SET chat_id = ? WHERE project_id = ? AND floor = ? AND channel = 'command' AND chat_id IS NULL`).run(id, project_id, floor)
+  db.prepare('UPDATE orders SET chat_id = ? WHERE project_id = ? AND floor = ? AND chat_id IS NULL').run(id, project_id, floor)
+}
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
@@ -288,6 +307,7 @@ export function log(project_id, kind, text, extra = {}) {
 
 export function addMessage(project_id, role, text, order_id = null, extra = {}) {
   const id = insert('messages', { project_id, role, text, order_id, ...extra })
+  if (extra.chat_id) run("UPDATE chats SET updated_at = datetime('now') WHERE id = ?", extra.chat_id)
   emit('message', project_id, get('SELECT * FROM messages WHERE id = ?', id))
   return id
 }
