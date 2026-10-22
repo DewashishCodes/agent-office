@@ -27,7 +27,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 - `server/vault.js` shared context vault (notes, decisions, files under `data/vault/<project>/`, repo crew docs read live). Agents get titles in the prompt and the crew MCP tools vault_search, vault_read, vault_write.
 - `server/crewmcp.js` HTTP MCP server at `/mcp/:token` (one token per run): crew_post, crew_ask, crew_read, crew_task_status so agents message and ask each other, the Orchestrator or the owner.
 - `server/github.js` git and gh wrappers. Clone-level ops (clone, fetch, worktree add/remove, push) go through one serial queue; parallel agents raced on git lock files without it.
-- `server/orchestrator.js` chat (resumed session per project, one at a time per project), plan JSON, revise, approve (rejects dependency loops), integrate.
+- `server/orchestrator.js` chat (a fresh session per request, one at a time per project and floor), plan JSON, revise, approve (rejects dependency loops), integrate. Command talk is split into chats (`chats` table, `chat_id` on messages and orders): the lead's prompt carries only the current chat's recent messages, and plan, question and integration messages follow their order's chat (`chatFor`). Posting without `chat_id` starts a new chat; the UI opens a new chat on every app visit.
 - Floors (`roster.FLOORS`, `agents.floor`, `orders.floor`, `messages.floor`): Tech plus opt-in floors (Design, Docs, Marketing, Sales, Customer, Legal, Ops & Finance, Research), each with its own lead (role `orchestrator`), workers and reviewer. Non-tech floors write Markdown under their own top-level folder and ship PRs like code; review picks the task's floor reviewer, QA runs only where a floor has one (Tech). Command and Home switch floors; `POST /api/projects/:id/floors` opens one. Onboarding maps owned paths for Tech only.
 - `server/scheduler.js` 5s tick dispatches ready tasks (deps done, owned paths cover files, max_parallel, daily budgets), runs each in `data/worktrees/<project>/crew-t<id>`, gate = changed files vs owned and protected paths, push + PR. 60s poll for merges. `markMerged`/`markOnboarded` are the single idempotent merge path. Boot recovery puts interrupted tasks back.
 - `server/pipeline.js` Reviewer then QA per PR, verdicts as fenced json, failures go through `failTask` (2 attempts, then Inbox).
@@ -54,6 +54,8 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 ## Status (2026-10-22)
 
+Latest: Command chats (list, new chat per visit, resume), model and effort picker on Team cards and profiles (Clawd effort gauge and model-switch sets), a full Custom agent form (owned paths, model, effort, open_pr by default), the Board kanban fits the screen with per-column scroll, Team crash fix. Pushed to the private GitHub repo `DewashishCodes/agent-crew`. Build and tests pass; chats checked through the API only, the new screens not yet tried in a browser. A DB backup from before the chats migration is in `data/crew-before-chats.db`.
+
 v3 (docs/PLAN-V3.md: real terminals, office Home, Clawds, vault, settings) implemented, not yet tested live by the owner. The terminal engine passed one smoke run (permission via Inbox, Stop result, tokens, cost).
 
 ### Earlier (2026-10-21)
@@ -67,6 +69,6 @@ Not yet verified live: crew_ask (blocking answers), permission timeout, removing
 1. HTTPS for phone access: Tailscale serve (recommended) or a cloudflared tunnel. Ask the owner which.
 2. Install the PWA on the phone, turn on notifications, confirm a push arrives.
 3. Try a Reviewer rejection path and the kill switch on live runs (parallel agents are verified).
-4. Optional: push this repo to GitHub (no remote yet), add a project settings screen (PATCH /api/projects/:id exists), login rate limit.
+4. Optional: rename and delete for Command chats, a project settings screen (PATCH /api/projects/:id exists), login rate limit.
 
 Skipped for MVP on purpose: autonomy levels 2 and 3, GitHub App and webhooks, schedules, Usage screen, templates, contracts checking, collaborators.
