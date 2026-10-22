@@ -81,6 +81,7 @@ const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob'
 export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
   if (agent?.permissions?.autonomous) return 'allow'
   if (tool.startsWith('mcp__crew__')) return 'allow'
+  if (['WebSearch', 'WebFetch'].includes(tool)) return agent?.permissions?.web ? 'allow' : 'ask'
   if (FILE_TOOLS.includes(tool)) {
     const p = input.file_path || input.notebook_path || input.path
     if (!p) return 'allow'

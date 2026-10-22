@@ -65,7 +65,7 @@ export function failTask(task_id, notes) {
 
 const readOpt = p => readFile(p, 'utf8').catch(() => '')
 
-const SYSTEM_TASK = (a, t, project) => `You are ${a.name}, the ${a.role} developer on an AI dev crew working on the GitHub repo ${project.repo}. ${a.specialty}
+const SYSTEM_TASK = (a, t, project) => `You are ${a.name} (${a.role}) on the ${a.floor} floor of an AI crew working on the GitHub repo ${project.repo}. ${a.specialty}
 
 ${a.instructions}
 
@@ -78,7 +78,7 @@ Rules, no exceptions:
 - When done, commit with git (git add, git commit) and a clear message. Never push, never run gh, never open a PR: the crew does that for you.
 - Never read, print or copy .env files or secrets.
 - To try a server, start it in the background and stop it in the same command: PORT=3456 node app.js & sleep 1; curl -s localhost:3456/x; kill %1. Never kill processes by name or with taskkill: the crew itself runs on node.
-- Run the relevant tests and build from CLAUDE.md before you finish, and fix what you broke.
+- If you changed code, run the relevant tests and build from CLAUDE.md before you finish, and fix what you broke.
 - If the task needs a change outside your paths, do your part and say exactly what is missing in your final message.
 - End with a short summary: what you changed, how you tested it, anything left open. Agents whose tasks depend on yours get this summary, so name the APIs, files and decisions they need.
 
@@ -196,7 +196,7 @@ function tickProject(p) {
     return
   }
   // Every task of the project, so a dependency on another order counts once it is done.
-  const tasks = all(`SELECT t.*, o.status order_status FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.project_id = ? ORDER BY t.id`, p.id)
+  const tasks = all(`SELECT t.*, o.status order_status, o.floor order_floor FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.project_id = ? ORDER BY t.id`, p.id)
   const active = tasks.filter(t => ['in_progress', 'in_review', 'qa'].includes(t.status))
   const agents = activeAgents(p.id)
   for (const t of readyTasks(tasks).filter(t => t.order_status === 'in_progress')) {
@@ -207,7 +207,7 @@ function tickProject(p) {
     if (lock) continue
     let a = agents.find(x => x.id === t.agent_id)
     if (!a || a.status === 'paused') {
-      const pick = matchAgent(agents, t)
+      const pick = matchAgent(agents.filter(x => x.floor === t.order_floor), t)
       // A paused owner with no stand-in waits; it is not a failure.
       if (!pick && a) continue
       if (!pick) {

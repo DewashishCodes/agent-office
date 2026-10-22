@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { get, getProject, getTask, getAgent, activeAgents, setTask, log } from './db.js'
+import { get, getProject, getTask, getOrder, getAgent, activeAgents, setTask, log } from './db.js'
 import { runClaude } from './runner.js'
 import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
@@ -11,7 +11,7 @@ const MAX_DIFF = 200_000
 
 const readOpt = p => readFile(p, 'utf8').catch(() => '')
 
-const SYSTEM_REVIEW = (a, project) => `You are ${a.name}, the code reviewer on an AI dev crew working on the GitHub repo ${project.repo}. ${a.specialty}
+const SYSTEM_REVIEW = (a, project) => `You are ${a.name}, the reviewer on the ${a.floor} floor of an AI crew working on the GitHub repo ${project.repo}. ${a.specialty}
 
 ${a.instructions}
 
@@ -70,12 +70,16 @@ const docs = async t => {
   return [claude && `# CLAUDE.md\n\n${claude}`, playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`].filter(Boolean).join('\n\n')
 }
 
-const pick = (project_id, role) => activeAgents(project_id).find(a => a.role === role && a.status !== 'paused')
+// The task's own floor checks it. A floor without a reviewer borrows any; QA (tests and builds) exists only where code is.
+const pick = (project_id, role, floor) => {
+  const ok = activeAgents(project_id).filter(a => a.role === role && a.status !== 'paused')
+  return ok.find(a => a.floor === floor) || (role === 'reviewer' ? ok[0] : null)
+}
 
 // Runs one check. Returns 'pass' | 'fail' | 'skip' | 'stop'; on fail the task is already sent back.
 async function step(t, project, opts) {
   const { role, kind, system, prompt, tools, mode, disallowed, okWord, badWord, field, label, policy, mcp } = opts
-  const a = pick(project.id, role)
+  const a = pick(project.id, role, t.floor)
   if (!a) {
     log(project.id, kind, `No active ${role} agent; skipped ${label} for "${t.title}"`, { task_id: t.id, order_id: t.order_id })
     return 'skip'
@@ -105,6 +109,7 @@ async function step(t, project, opts) {
 export async function checkTask(task_id) {
   let t = getTask(task_id)
   const project = getProject(t.project_id)
+  t.floor = getOrder(t.order_id)?.floor || 'tech'
   const context = `${await docs(t)}\n\n${taskBlock(t)}`
 
   let diff = await git(t.worktree, 'diff', `${t.base_sha}..HEAD`)
@@ -117,10 +122,11 @@ export async function checkTask(task_id) {
     tools: ['Read', 'Grep', 'Glob'], mcp: CREW_TOOLS, mode: null, policy: true, disallowed: [...denyRules(project), 'Edit', 'Write', 'NotebookEdit'],
     okWord: 'pass', badWord: 'fail', field: 'report',
   }
-  const toQa = () => { t = setTask(task_id, { status: 'qa' }); issueStatus(project, t, 'qa') }
+  const floor = t.floor
+  const toQa = () => { t = { ...setTask(task_id, { status: 'qa' }), floor }; issueStatus(project, t, 'qa') }
 
   // S tasks get one session that reviews and tests: a second session would mostly repeat its own startup cost.
-  if (t.size === 'S' && pick(project.id, 'qa')) {
+  if (t.size === 'S' && pick(project.id, 'qa', floor)) {
     toQa()
     const both = await step(t, project, {
       ...qa, label: 'Review and QA', system: SYSTEM_CHECK,
@@ -134,14 +140,16 @@ export async function checkTask(task_id) {
       tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read', ...VAULT_READ], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
     })
     if (review === 'fail' || review === 'stop') return
-    toQa()
-    const tested = await step(t, project, qa)
-    if (tested === 'fail' || tested === 'stop') return
+    if (pick(project.id, 'qa', floor)) {
+      toQa()
+      const tested = await step(t, project, qa)
+      if (tested === 'fail' || tested === 'stop') return
+    }
   }
 
   t = setTask(task_id, { status: 'done' })
   issueStatus(project, t, 'done')
-  log(project.id, 'done', `"${t.title}" passed review and QA`, { task_id, agent_id: t.agent_id, order_id: t.order_id, link: t.pr_url })
+  log(project.id, 'done', `"${t.title}" passed ${floor === 'tech' ? 'review and QA' : 'review'}`, { task_id, agent_id: t.agent_id, order_id: t.order_id, link: t.pr_url })
   // Checked synchronously right after our own update, so only the last task to finish triggers it.
   if (!get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND status != 'done'`, t.order_id).n) await integrateOrder(t.order_id)
 }

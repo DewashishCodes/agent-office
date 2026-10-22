@@ -1,7 +1,7 @@
 import { all, get, run, insert, getAgent, getTask, getProject, activeAgents, addInbox, resolveInbox } from './db.js'
 import { emit } from './bus.js'
 import { runForToken, sendToRun, canDeliver } from './runner.js'
-import { askFromAgent } from './orchestrator.js'
+import { askFromAgent, chat } from './orchestrator.js'
 import { searchVault, describeHits, readForAgent, addEntry } from './vault.js'
 import { startService, stopService, listServices, serviceText } from './services.js'
 import { suggestOrder } from './support.js'
@@ -18,7 +18,7 @@ const PEER_WAIT_MS = 10 * 60 * 1000
 
 const TOOLS = {
   crew_post: {
-    description: 'Send a message to a crew mate by agent name, to "all", to "orchestrator" or to "owner". Does not wait. Use it to tell others about API shapes, renamed files or decisions they need.',
+    description: 'Send a message to a crew mate by agent name, to "all", to "orchestrator" or to "owner". Does not wait. Use it to tell others about API shapes, renamed files or decisions they need. A floor lead posting to another floor\'s lead hands that floor an order to plan.',
     inputSchema: { type: 'object', properties: { to: { type: 'string', description: 'Agent name, "all", "orchestrator" or "owner"' }, text: { type: 'string' } }, required: ['to', 'text'] },
   },
   crew_ask: {
@@ -93,12 +93,16 @@ function deliver(m, to_agent_id) {
   return true
 }
 
-function recipient(ctx, to) {
+export function recipient(ctx, to) {
   const t = String(to || '').trim()
   const key = t.toLowerCase()
   if (key === 'owner' || key === 'all') return { kind: key }
   const agents = activeAgents(ctx.project_id)
-  const a = key === 'orchestrator' ? agents.find(x => x.role === 'orchestrator') : agents.find(x => x.name.toLowerCase() === key)
+  const floor = agents.find(x => x.id === ctx.agent_id)?.floor || 'tech'
+  // "orchestrator" means my floor's lead, or the Tech lead when I am a lead myself.
+  const lead = f => agents.find(x => x.role === 'orchestrator' && x.floor === f)
+  const mine = lead(floor)
+  const a = key === 'orchestrator' ? (mine && mine.id !== ctx.agent_id ? mine : lead('tech')) : agents.find(x => x.name.toLowerCase() === key)
   if (!a) throw new Error(`No agent named "${t}". Crew: ${agents.map(x => x.name).join(', ')}, or "all", "orchestrator", "owner".`)
   if (a.id === ctx.agent_id) throw new Error('That is you.')
   return { kind: a.role === 'orchestrator' ? 'orchestrator' : 'agent', agent: a }
@@ -107,6 +111,15 @@ function recipient(ctx, to) {
 function post(ctx, { to, text }, kind = 'message') {
   const r = recipient(ctx, to)
   const base = { project_id: ctx.project_id, from_agent_id: ctx.agent_id, task_id: ctx.task_id, text: String(text), kind }
+  // Leads run fresh sessions per request, so a note to another floor's lead would never be read. It becomes an order on
+  // that floor instead; its plan still waits for the owner's approval.
+  const me = getAgent(ctx.agent_id)
+  if (r.kind === 'orchestrator' && me?.role === 'orchestrator' && r.agent.floor !== me.floor) {
+    const m = addMessage({ ...base, to_agent_id: r.agent.id, delivered: 1 })
+    chat(ctx.project_id, `[Handoff from ${me.name}, ${me.floor} floor] ${m.text}`, r.agent.floor, 'system')
+      .catch(e => console.error('handoff failed', e))
+    return { m, text: `Handed to ${r.agent.name}. It plans this on the ${r.agent.floor} floor and the owner approves the plan there. Tell the owner it was handed over.` }
+  }
   if (r.kind === 'owner') {
     const m = addMessage({ ...base, to_owner: 1, delivered: 1 })
     const inbox = addInbox(ctx.project_id, 'question', `${nameOf(ctx.agent_id)}: ${m.text.slice(0, 90)}`, { body: m.text, run_id: ctx.run_id, task_id: ctx.task_id })
@@ -135,7 +148,7 @@ async function ask(ctx, { to, question }) {
   const me = getAgent(ctx.agent_id), task = ctx.task_id ? getTask(ctx.task_id) : null
   if (r.kind === 'orchestrator') {
     addMessage({ project_id: ctx.project_id, from_agent_id: ctx.agent_id, to_agent_id: r.agent.id, task_id: ctx.task_id, text: String(question), kind: 'question', delivered: 1 })
-    const answer = await askFromAgent(ctx.project_id, me, task, String(question))
+    const answer = await askFromAgent(ctx.project_id, me, task, String(question), r.agent.floor)
     addMessage({ project_id: ctx.project_id, from_agent_id: r.agent.id, to_agent_id: ctx.agent_id, task_id: ctx.task_id, text: answer, kind: 'answer', delivered: 1 })
     return answer
   }

@@ -5,8 +5,9 @@
   .main:has(.hq) > main { flex: 1; min-height: 0; }
   .hq {
     height: 100%; display: grid; gap: 10px;
-    grid-template-columns: 196px minmax(0, 1fr) minmax(380px, 40%);
-    grid-template-rows: minmax(0, 1fr) 176px;
+    /* --c1, --c3, --r2 come from the splitters (Home.jsx); min() keeps a saved size sane on a smaller window. */
+    grid-template-columns: var(--c1, 196px) minmax(0, 1fr) min(var(--c3, max(380px, 40%)), calc(100% - var(--c1, 196px) - 320px));
+    grid-template-rows: minmax(0, 1fr) max(var(--r2min, 0px), min(var(--r2, 176px), calc(100% - 200px)));
     grid-template-areas: "space space term" "config kanban orders";
   }
   .hq-space { grid-area: space; }
@@ -31,6 +32,10 @@
 }
 .room-wall { position: absolute; inset: 0 0 auto 0; height: 44px; display: flex; align-items: center; gap: 22px; padding: 0 16px; }
 .room-wall > * { pointer-events: none; }
+/* A narrowed room (splitter) drops windows before the wall row overflows. */
+.room { container-type: inline-size; }
+@container (max-width: 640px) { .window:nth-child(n + 2) { display: none; } }
+@container (max-width: 470px) { .window, .sign { display: none; } }
 .window { flex: 0 0 auto; width: 48px; height: 26px; border: 3px solid #5a4c3f; background: linear-gradient(180deg, #23314a, #31476b); box-shadow: inset 26px 0 0 -23px #5a4c3f; }
 .sign { margin-left: auto; white-space: nowrap; font: 11px/1 "Silkscreen", var(--mono); letter-spacing: .12em; color: #d97757; padding: 5px 8px; border: 2px solid #d97757; background: #1f1a16; }
 
@@ -123,7 +128,7 @@
 .ticker-more { font: 10px/1 "Silkscreen", var(--mono); text-transform: uppercase; padding: 4px 6px; color: var(--ink); background: #d97757; }
 
 /* Terminal pane: the selected agent's real terminal fills it. */
-.hq-term { display: flex; flex-direction: column; }
+.hq-term { display: flex; flex-direction: column; gap: 6px; }
 .hq-term .tile { flex: 1; min-height: 0; gap: 6px; padding: 10px; overflow: hidden; }
 .hq-term .tile .terminal, .hq-term .tile .transcript { flex: 1; height: auto; min-height: 0; }
 .hq-term .tile .meter { display: none; }
@@ -174,16 +179,14 @@
 .cm { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
 .cm.first { margin-top: 10px; }
 .cm.first:first-child { margin-top: 0; }
-.cm .avatar.sm { width: 28px; height: 28px; font-size: 11px; background: hsl(var(--hue) 60% 90%); color: hsl(var(--hue) 55% 32%); }
+.cm .avatar.sm { width: 28px; height: 28px; font-size: 11px; background: hsl(var(--hue) 35% 25%); color: hsl(var(--hue) 70% 80%); }
 .cm:not(.first) .cm-body { grid-column: 2; }
 .cm-meta { font-size: 12px; margin-bottom: 2px; }
 .cm-meta .pill { margin-left: 4px; }
-.cm-bubble { display: inline-block; max-width: 100%; padding: 6px 10px; border-radius: 4px 12px 12px 12px; font-size: 13.5px; background: hsl(var(--hue) 55% 94%); }
+.cm-bubble { display: inline-block; max-width: 100%; padding: 6px 10px; border-radius: 4px 12px 12px 12px; font-size: 13.5px; background: hsl(var(--hue) 25% 20%); }
 .cm.mine .cm-bubble { background: var(--accent-soft); }
-@media (prefers-color-scheme: dark) {
-  .cm .avatar.sm { background: hsl(var(--hue) 35% 25%); color: hsl(var(--hue) 70% 80%); }
-  .cm-bubble { background: hsl(var(--hue) 25% 20%); }
-}
+[data-theme="day"] .cm .avatar.sm { background: hsl(var(--hue) 60% 90%); color: hsl(var(--hue) 55% 32%); }
+[data-theme="day"] .cm-bubble { background: hsl(var(--hue) 55% 94%); }
 
 /* Phone: the room first, then orders, kanban (swipe), config. A desk opens its terminal in a sheet. */
 @media (max-width: 899px) {
@@ -232,4 +235,75 @@
 .svc-pick { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .svc-log { height: 320px; }
 /* Support replies need room to read: the bottom row grows while the bar is in Support mode. */
-@media (min-width: 900px) { .hq:has(.order-bar.support) { grid-template-rows: minmax(0, 1fr) 300px; } }
+.hq:has(.order-bar.support) { --r2min: 300px; }
+
+/* Splitters live in the grid gaps; a faint grip until hovered or focused. */
+.splitter { display: none; }
+@media (min-width: 900px) {
+  .splitter { display: block; position: relative; z-index: 3; touch-action: none; }
+  .splitter::after { content: ""; position: absolute; inset: 0; margin: auto; border-radius: 2px; background: var(--border); transition: background .15s; }
+  .splitter:hover::after, .splitter:focus-visible::after, .splitter:active::after { background: var(--accent); }
+  .splitter:focus-visible { outline: none; }
+  .s-c3, .s-c1 { justify-self: start; width: 10px; margin-left: -10px; cursor: col-resize; }
+  .s-c3 { grid-column: 3; grid-row: 1 / 3; }
+  .s-c1 { grid-column: 2; grid-row: 2; }
+  .s-c3::after, .s-c1::after { width: 3px; height: 40px; }
+  .s-r2 { grid-column: 1 / 4; grid-row: 2; align-self: start; height: 10px; margin-top: -10px; cursor: row-resize; }
+  .s-r2::after { width: 40px; height: 3px; }
+}
+
+/* Agent switcher above the terminal, layout presets at its end. */
+.term-strip { display: flex; align-items: center; gap: 8px; }
+.strip-tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.strip-tab {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
+  font: 10px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
+  color: var(--muted); background: var(--surface-2); border: 2px solid transparent; border-radius: 6px;
+}
+.strip-tab:hover { color: var(--text); }
+.strip-tab[aria-selected="true"] { color: var(--accent-text); background: var(--accent); }
+.strip-tab .light { box-shadow: none; }
+.presets { flex: 0 0 auto; display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--surface-2); }
+.presets button {
+  display: inline-grid; place-items: center; min-height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 6px; cursor: pointer;
+  font: 10px/1 var(--pixel); text-transform: uppercase; color: var(--muted); background: none;
+}
+.presets button:hover { color: var(--accent); background: var(--surface); }
+.presets svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Needs you: anything waiting on the owner pulses until answered. */
+@keyframes needs { 0% { box-shadow: 0 0 0 0 rgb(255 107 94 / .65); } 70%, 100% { box-shadow: 0 0 0 9px rgb(255 107 94 / 0); } }
+.needs-btn:not(.calm), .tab .count, .tag-count, .strip-tab.l-ask { animation: needs 1.6s ease-out infinite; }
+.strip-tab.l-ask { border-color: var(--err); }
+.station.l-ask::after {
+  content: ""; position: absolute; left: -10px; right: -10px; top: 18px; bottom: -6px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgb(255 107 94 / .4), transparent); animation: blink 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .needs-btn, .tab .count, .tag-count, .strip-tab, .station.l-ask::after { animation: none; } }
+
+/* Day shift: daylight through the windows, a lighter wall. The floor stays dark so the desks read the same. */
+[data-theme="day"] .room {
+  background:
+    linear-gradient(#cdbb9f 0 44px, #a88c6c 44px 48px, transparent 48px),
+    repeating-linear-gradient(90deg, transparent 0 95px, rgb(0 0 0 / .18) 95px 96px),
+    repeating-linear-gradient(0deg, #4a3829 0 23px, #43321f 23px 24px);
+}
+[data-theme="day"] .window { border-color: #8a7158; background: linear-gradient(180deg, #8fcdf0, #d6eef9); box-shadow: inset 26px 0 0 -23px #8a7158; }
+[data-theme="day"] .window:first-child { background: radial-gradient(circle at 75% 35%, #ffd66b 0 4px, transparent 5px), linear-gradient(180deg, #8fcdf0, #d6eef9); }
+/* Night: a moon in the first window. */
+.window:first-child { background: radial-gradient(circle at 75% 35%, #f4efe3 0 3px, transparent 4px), linear-gradient(180deg, #23314a, #31476b); }
+
+/* Floors: elevator buttons above the room (and the Command chat), the sign takes the floor's color. */
+.hq-space { gap: 6px; }
+.floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.floor-chip { display: inline-block; width: 8px; height: 8px; background: var(--floor, var(--accent)); box-shadow: 0 0 0 1px rgb(0 0 0 / .4); }
+.floor-tab[aria-selected="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
+.floor-tab[aria-selected="true"] .floor-chip { background: var(--accent-text); }
+.floor-add {
+  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; cursor: pointer;
+  font: 14px/1 var(--pixel); color: var(--muted); background: var(--surface-2); border: 2px dashed var(--border); border-radius: 6px;
+}
+.floor-add:hover { color: var(--accent); border-color: var(--accent); }
+.room .sign { color: var(--floor, #d97757); border-color: var(--floor, #d97757); }
+.chat-floors { position: sticky; top: 49px; z-index: 3; padding: 6px 0; background: var(--bg); }
+.floor-bar .strip-tabs { flex: 0 1 auto; }

@@ -180,3 +180,9 @@ test('chainOrder: a chain or a diamond under one top task, else null', () => {
   assert.equal(chainOrder([{ id: 1, depends_on: [] }, { id: 2, depends_on: [] }]), null)
   assert.equal(chainOrder([{ id: 1 }, { id: 2, depends_on: [1] }, { id: 3, depends_on: [1] }]), null)
 })
+
+test('permissionPolicy: web tools only for agents allowed the web', () => {
+  assert.equal(permissionPolicy(S, { permissions: { web: true } }, 'WebSearch', { query: 'x' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, { permissions: { web: true } }, 'WebFetch', { url: 'https://example.com' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S, { permissions: {} }, 'WebFetch', { url: 'https://example.com' }, CWD), 'ask')
+})

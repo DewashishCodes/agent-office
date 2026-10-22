@@ -669,5 +669,8 @@ export const tokensToday = agent_id =>
 export const projectTokensToday = project_id =>
   get('SELECT COALESCE(SUM(input_tokens + output_tokens), 0) AS n FROM runs WHERE project_id = ? AND started_at >= ?', project_id, todayStart()).n
 
+export const projectCostToday = project_id =>
+  get('SELECT COALESCE(SUM(cost_usd), 0) AS n FROM runs WHERE project_id = ? AND started_at >= ?', project_id, todayStart()).n
+
 export const runningCount = agent_id =>
   get(`SELECT COUNT(*) AS n FROM runs WHERE agent_id = ? AND status = 'running'`, agent_id).n

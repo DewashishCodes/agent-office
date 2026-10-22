@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS agents (
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   name TEXT NOT NULL,
-  role TEXT NOT NULL,                     -- orchestrator | planner | frontend | backend | reviewer | qa | custom
+  role TEXT NOT NULL,                     -- orchestrator (a floor lead) | reviewer | qa | planner | frontend | backend | support | custom | a floor worker key
   specialty TEXT NOT NULL DEFAULT '',
   owned_paths TEXT NOT NULL DEFAULT '[]', -- JSON globs
   readonly_paths TEXT NOT NULL DEFAULT '[]',
@@ -195,6 +195,9 @@ addColumn('inbox', 'run_id', 'INTEGER')
 addColumn('inbox', 'ref', 'TEXT')
 addColumn('messages', 'channel', "TEXT NOT NULL DEFAULT 'command'")  // command (Orchestrator) | support
 addColumn('messages', 'suggest', 'TEXT')                       // support: an order it suggests handing to the team                               // permission request_id
+addColumn('agents', 'floor', "TEXT NOT NULL DEFAULT 'tech'")   // tech | design | docs | ... see roster.FLOORS
+addColumn('orders', 'floor', "TEXT NOT NULL DEFAULT 'tech'")   // the floor whose lead planned it
+addColumn('messages', 'floor', "TEXT NOT NULL DEFAULT 'tech'") // command chat is per floor
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()

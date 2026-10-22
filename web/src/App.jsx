@@ -56,6 +56,10 @@ function Shell() {
     setPick(id)
     try { localStorage.setItem('crew.project', String(id)) } catch {}
   }
+  // The floor the owner is on, shared by Home and Command.
+  const [floors] = useData('/floors')
+  const [floor, setFloorState] = useState(() => { try { return localStorage.getItem('crew.floor') || 'tech' } catch { return 'tech' } })
+  const setFloor = f => { setFloorState(f); try { localStorage.setItem('crew.floor', f) } catch {} }
   const project = projects?.find(p => p.id === pick) || projects?.[0] || null
   const pid = project?.id ?? null
 
@@ -68,7 +72,7 @@ function Shell() {
   const showProjects = !project || route.view === 'projects'
   const view = showProjects ? 'projects' : route.view
   const p = detail || project
-  const ctx = { pid, project: p, reloadProject: reloadDetail }
+  const ctx = { pid, project: p, reloadProject: reloadDetail, floors, floor, setFloor }
 
   let screen
   if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={id => { choose(id); location.hash = '#/home' }} />
@@ -118,6 +122,8 @@ function Header({ projects, project, detail, onPick, reload }) {
   const [run, busy, error] = useAction()
   const util = detail?.rate_limit?.utilization
   const pct = util == null ? null : Math.round(util <= 1 ? util * 100 : util)
+  const budget = project.settings?.project_daily_token_budget
+  const [day, toggleTheme] = useTheme()
   const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload() })
   const logout = () => run(async () => { await api('/logout', { method: 'POST' }); location.reload() })
 
@@ -130,9 +136,14 @@ function Header({ projects, project, detail, onPick, reload }) {
         <option value="new">Add or manage projects</option>
       </select>
       <div className="stats" aria-label="Usage">
-        {detail && <span className="tok-today" title="Tokens used today">{tokens(detail.tokens_today)} today</span>}
-        {pct != null && <span className={pct >= 80 ? 'warn' : ''} title="Five hour rate limit used">5h {pct}%</span>}
+        {detail && <span className="cost" title="Spent today">${(detail.cost_today || 0).toFixed(2)}</span>}
+        {detail && <Gauge className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
+          pct={budget ? (detail.tokens_today / budget) * 100 : null}>{tokens(detail.tokens_today)}{budget ? ` / ${tokens(budget)}` : ''} tok</Gauge>}
+        {pct != null && <Gauge title="Five hour rate limit used" pct={pct}>5h {pct}%</Gauge>}
       </div>
+      <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
+      </button>
       {!project.paused && (
         <ConfirmButton small variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all</ConfirmButton>
       )}
@@ -142,6 +153,29 @@ function Header({ projects, project, detail, onPick, reload }) {
       </More>
       <ErrorText error={error} />
     </header>
+  )
+}
+
+// Night shift by default; the choice sticks and index.html applies it before first paint.
+function useTheme() {
+  const [day, setDay] = useState(() => document.documentElement.dataset.theme === 'day')
+  useEffect(() => {
+    const el = document.documentElement
+    if (day) el.dataset.theme = 'day'
+    else delete el.dataset.theme
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', day ? '#f4efe3' : '#16130f')
+    try { localStorage.setItem('crew.theme', day ? 'day' : 'night') } catch {}
+  }, [day])
+  return [day, () => setDay(d => !d)]
+}
+
+function Gauge({ pct, title, className = '', children }) {
+  const p = pct == null ? null : Math.min(100, Math.round(pct))
+  return (
+    <span className={`gauge ${className} ${p >= 80 ? 'hot' : ''}`} title={title}>
+      <span>{children}</span>
+      {p != null && <i aria-hidden="true"><b style={{ width: `${p}%` }} /></i>}
+    </span>
   )
 }
 

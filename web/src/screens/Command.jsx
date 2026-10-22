@@ -2,23 +2,30 @@ import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
+import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
 
-export default function Command({ pid, running }) {
-  const [messages, , error] = useData(`/projects/${pid}/messages`, on(pid, 'message'))
+export default function Command({ pid, running, floors, floor: saved, setFloor }) {
   const [agents] = useData(`/projects/${pid}/agents`, on(pid, 'agent'))
+  const [templates] = useData('/templates')
+  const [adding, setAdding] = useState(false)
+  const open = openFloors(floors, agents)
+  const floor = currentFloor(open, saved)
+  const lead = agents?.find(a => a.role === 'orchestrator' && a.floor === floor.key)
+  const leadName = lead?.name || 'Orchestrator'
+  const [messages, , error] = useData(agents && `/projects/${pid}/messages?floor=${floor.key}`, on(pid, 'message'))
   const [text, setText] = useState('')
   const [run, busy, sendError] = useAction()
   const [orchRun, setOrchRun] = useState(null)
   const [waiting, setWaiting] = useState(false)
 
-  useEffect(() => { setOrchRun(running?.find(r => r.kind === 'orchestrator') || null) }, [running])
+  useEffect(() => { setOrchRun(running?.find(r => r.kind === 'orchestrator' && r.agent_id === lead?.id) || null); setWaiting(false) }, [running, lead?.id])
   useEvents(ev => {
     if (ev.project_id !== pid) return
-    if (ev.type === 'run' && ev.data.kind === 'orchestrator') {
+    if (ev.type === 'run' && ev.data.kind === 'orchestrator' && ev.data.agent_id === lead?.id) {
       setOrchRun(ev.data.status === 'running' ? ev.data : null)
       if (ev.data.status !== 'running') setWaiting(false)
     }
-    if (ev.type === 'message' && ev.data.role === 'orchestrator') setWaiting(false)
+    if (ev.type === 'message' && ev.data.role === 'orchestrator' && ev.data.floor === floor.key) setWaiting(false)
   })
 
   // Follow new messages only while the owner is at the bottom, so reading back is not interrupted.
@@ -37,7 +44,7 @@ export default function Command({ pid, running }) {
     if (!t) return
     atBottom.current = true
     run(async () => {
-      await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } })
+      await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t, floor: floor.key } })
       setText('')
       setWaiting(true)
     })
@@ -45,34 +52,43 @@ export default function Command({ pid, running }) {
 
   const thinking = orchRun || waiting
   return (
-    <section className="chat">
+    <section className="chat" style={{ '--floor': floor.color }}>
+      {open.length > 0 && (
+        <div className="chat-floors">
+          <FloorBar open={open} agents={agents} floor={floor.key} onPick={setFloor} onAdd={() => setAdding(true)} canAdd={open.length < (floors?.length || 0)} />
+        </div>
+      )}
       <ErrorText error={error} />
       {messages && messages.length === 0 && (
-        <Empty>Give the Orchestrator an order, for example: Add Google sign-in. It replies with a plan for you to approve.</Empty>
+        <Empty>{floor.key === 'tech'
+          ? `Give ${leadName} an order, for example: Add Google sign-in. It replies with a plan for you to approve.`
+          : `Give ${leadName} an order for the ${floor.name} floor. ${floor.blurb} It replies with a plan for you to approve.`}</Empty>
       )}
       <ol className="messages">
         {messages?.map(m => (
           <li key={m.id} className={`msg ${m.role}`}>
-            <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : 'Orchestrator'} <span className="muted">{ago(m.created_at)}</span></div>
+            <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : leadName} <span className="muted">{ago(m.created_at)}</span></div>
             {m.text && <div className="bubble"><Md text={m.text} /></div>}
-            {m.order_id && <PlanCard orderId={m.order_id} pid={pid} agents={agents} />}
+            {m.order_id && <PlanCard orderId={m.order_id} pid={pid} agents={agents?.filter(a => a.floor === floor.key)} />}
           </li>
         ))}
       </ol>
       {thinking && (
         <p className="thinking" role="status">
-          <span className="pulse" aria-hidden="true" /> Orchestrator is thinking
+          <span className="pulse" aria-hidden="true" /> {leadName} is thinking
           {orchRun?.last_event && <span className="muted mono"> {orchRun.last_event}</span>}
         </p>
       )}
       <form className="composer" onSubmit={send}>
-        <label className="sr-only" htmlFor="order-text">Order or question for the Orchestrator</label>
-        <textarea id="order-text" rows="2" placeholder="Order or question (Ctrl+Enter sends)" value={text}
+        <label className="sr-only" htmlFor="order-text">Order or question for {leadName}</label>
+        <textarea id="order-text" rows="2" placeholder={`Order or question for ${leadName} (Ctrl+Enter sends)`} value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send() }} />
         <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Send</Button>
       </form>
       <ErrorText error={sendError} />
+      {adding && <OpenFloorSheet pid={pid} floors={floors} open={open} templates={templates}
+        onOpened={k => { setAdding(false); setFloor(k) }} onClose={() => setAdding(false)} />}
     </section>
   )
 }
@@ -157,7 +173,7 @@ function PlanCard({ orderId, pid, agents }) {
       )}
       {open && editing && (
         <div className="stack">
-          <label className="field"><span>Feedback for the Orchestrator</span>
+          <label className="field"><span>Feedback for the lead</span>
             <textarea rows="3" value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="For example: split t2, the backend should own the migration" />
           </label>
           <div className="actions">
@@ -167,7 +183,7 @@ function PlanCard({ orderId, pid, agents }) {
           </div>
         </div>
       )}
-      {order.status === 'planning' && <p className="muted small">The Orchestrator is revising this plan.</p>}
+      {order.status === 'planning' && <p className="muted small">The lead is revising this plan.</p>}
       <ErrorText error={actError} />
     </article>
   )

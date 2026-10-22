@@ -5,7 +5,7 @@ import { Md } from './Transcript.jsx'
 import { ServiceLog } from './Terminal.jsx'
 
 // The Support conversation: chores in, short answers out. A reply can carry an order Support suggests for the team.
-export function SupportThread({ pid, support, onSentToTeam }) {
+export function SupportThread({ pid, support, floor = 'tech', onSentToTeam }) {
   const [msgs] = useData(`/projects/${pid}/messages?channel=support`, ev => ev.type === 'message' && ev.project_id === pid && ev.data.channel === 'support')
   const [run, busy, error] = useAction()
   const box = useRef()
@@ -15,7 +15,7 @@ export function SupportThread({ pid, support, onSentToTeam }) {
   const lastReply = msgs?.findLast(m => m.role === 'support')
   const lastAsk = msgs?.findLast(m => m.role === 'user')
 
-  const toTeam = text => run(async () => { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text } }); onSentToTeam?.() })
+  const toTeam = text => run(async () => { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text, floor } }); onSentToTeam?.() })
   const retry = () => run(() => api(`/projects/${pid}/support`, { method: 'POST', body: { text: lastAsk.text, model: 'sonnet' } }))
 
   return (

@@ -46,7 +46,8 @@ export async function runOnboarding(project_id) {
     project = getProject(project_id)
     await pullDefault(project)
     const { path } = await createWorktree(project, BRANCH)
-    const agents = activeAgents(project_id)
+    // Owned paths of other floors are their fixed folders; onboarding maps the code layout for the Tech floor only.
+    const agents = activeAgents(project_id).filter(a => a.floor === 'tech')
     const lead = agents.find(a => a.role === 'orchestrator')
 
     const r = await runClaude({

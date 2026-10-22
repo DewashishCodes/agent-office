@@ -10,7 +10,7 @@ process.env.CREW_DATA_DIR = mkdtempSync(join(tmpdir(), 'crew-'))
 process.env.CREW_CLAUDE_BIN = join(import.meta.dirname, 'fake-claude.mjs')
 const { insert, all } = await import('../server/db.js')
 const { runClaude, killRun } = await import('../server/runner.js')
-const { mcpHandler, CREW_TOOLS, takeQueued } = await import('../server/crewmcp.js')
+const { mcpHandler, CREW_TOOLS, takeQueued, recipient } = await import('../server/crewmcp.js')
 
 const app = express()
 app.use(express.json())
@@ -80,4 +80,15 @@ test('crew_task_status lists nothing without a task', async () => {
   const r = await (await call({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'crew_task_status', arguments: {} } })).json()
   assert.equal(r.result.content[0].text, 'No tasks found.')
   void first
+})
+
+test('"orchestrator" is my floor lead, or the Tech lead when I am a lead', () => {
+  const p = insert('projects', { name: 'floors', repo: 'o/floors' })
+  const tech = insert('agents', { project_id: p, name: 'Orchestrator', role: 'orchestrator', floor: 'tech' })
+  const legal = insert('agents', { project_id: p, name: 'Legal Lead', role: 'orchestrator', floor: 'legal' })
+  const drafter = insert('agents', { project_id: p, name: 'Legal Drafter', role: 'legal-drafter', floor: 'legal' })
+  assert.equal(recipient({ project_id: p, agent_id: drafter }, 'orchestrator').agent.id, legal)
+  assert.equal(recipient({ project_id: p, agent_id: legal }, 'orchestrator').agent.id, tech)
+  assert.equal(recipient({ project_id: p, agent_id: legal }, 'Orchestrator').agent.id, tech)
+  assert.throws(() => recipient({ project_id: p, agent_id: tech }, 'orchestrator'), /That is you/)
 })

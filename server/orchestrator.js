@@ -3,6 +3,7 @@ import { emit } from './bus.js'
 import { runClaude } from './runner.js'
 import { ensureClone, pullDefault, createIssue, prDiff } from './github.js'
 import { kick } from './scheduler.js'
+import { FLOORS, floorOf } from './roster.js'
 import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder } from './rules.js'
 
 // Named here, not imported from crewmcp.js, which imports this module.
@@ -44,10 +45,18 @@ const EXAMPLE_PLAN = `{
 // Support is not part of the build team; it never gets planned tasks.
 const roster = agents => agents.filter(a => a.role !== 'support').map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
 
-const SYSTEM_ORCH = (lead, project, agents) => `You are ${lead?.name || 'the Orchestrator'}, the lead of an AI dev crew working on the GitHub repo ${project.repo} (default branch ${project.default_branch}). Your working directory is a fresh clone of it. You can read code (Read, Grep, Glob) but you never edit files and never run commands.
+// Non-tech floors plan documents in their folder; code belongs to the Tech floor.
+const floorScope = (f, leads) => `${f.key === 'tech' ? '' : `
+Your floor writes documents, not code: every task's "files" must sit under ${f.folder}/. When an order needs code or another floor's documents, plan only your part and tell the owner which floor should do the rest. The example plan below shows the format only, not your kind of work.
+`}${leads.length ? `
+Other floors and their leads. To give another floor work (code, a page, their documents), crew_post the full order to its lead by name: it becomes an order on their floor, planned by them and approved by the owner. Do not ask the owner to paste it. The leads:
+${leads.map(a => `- ${floorOf(a.floor)?.name || a.floor}: ${a.name}`).join('\n')}
+` : ''}`
+
+const SYSTEM_ORCH = (lead, project, agents, floor, leads) => `You are ${lead?.name || 'the Orchestrator'}, the lead of the ${floor.name} floor of an AI crew working on the GitHub repo ${project.repo} (default branch ${project.default_branch}). ${floor.blurb} Your working directory is a fresh clone of it. You can read code (Read, Grep, Glob) but you never edit files and never run commands.
 
 ${lead?.instructions || ''}
-
+${floorScope(floor, leads)}
 Before answering about the code or planning, read CLAUDE.md and .crew/PLAYBOOK.md in the repo root if they exist: they describe the stack, commands and team rules. Look at the real code before you plan; do not guess file paths.
 
 Your crew (only agents that own paths can take tasks):
@@ -88,13 +97,14 @@ Orders already in flight. Do not plan their work again. A new task that touches 
 ${lines.join('\n')}`
 }
 
-const lead = agents => agents.find(a => a.role === 'orchestrator')
+const lead = (agents, floor) => agents.find(a => a.role === 'orchestrator' && a.floor === floor)
+const say = (project_id, floor, role, text, order_id = null) => addMessage(project_id, role, text, order_id, { floor })
 
 // Every request is a fresh session: resuming one ever-growing chat re-read its whole history on each call and cost
 // more than the work it planned. The recent chat and finished orders come in the prompt instead.
-function withChat(project_id, before_id, text) {
-  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, 'command', before_id)
-  const done = all(`SELECT id, text, plan, status FROM orders WHERE project_id = ? AND status IN ('done', 'ready_to_merge') ORDER BY id DESC LIMIT 5`, project_id)
+function withChat(project_id, floor, before_id, text) {
+  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ? AND floor = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, 'command', floor, before_id)
+  const done = all(`SELECT id, text, plan, status FROM orders WHERE project_id = ? AND floor = ? AND status IN ('done', 'ready_to_merge') ORDER BY id DESC LIMIT 5`, project_id, floor)
   const who = { user: 'Owner', orchestrator: 'You', system: 'Crew' }
   return [
     done.length && `# Recently finished orders\n\n${done.map(o => `- #${o.id} ${o.plan?.summary || o.text} (${o.status})`).join('\n')}`,
@@ -103,37 +113,39 @@ function withChat(project_id, before_id, text) {
   ].filter(Boolean).join('\n\n')
 }
 
-// One Orchestrator run per project at a time, in order; prompts may be functions so a queued request sees the replies before it.
+// One lead run per floor at a time, in order; prompts may be functions so a queued request sees the replies before it.
 const asking = new Map()
 const waiting = new Map()
-function ask(project_id, ...rest) {
-  waiting.set(project_id, (waiting.get(project_id) || 0) + 1)
-  const p = (asking.get(project_id) || Promise.resolve()).then(() => askNow(project_id, ...rest))
-    .finally(() => waiting.set(project_id, waiting.get(project_id) - 1))
-  asking.set(project_id, p.catch(() => {}))
+function ask(project_id, floor, ...rest) {
+  const q = `${project_id}:${floor}`
+  waiting.set(q, (waiting.get(q) || 0) + 1)
+  const p = (asking.get(q) || Promise.resolve()).then(() => askNow(project_id, floor, ...rest))
+    .finally(() => waiting.set(q, waiting.get(q) - 1))
+  asking.set(q, p.catch(() => {}))
   return p
 }
 
 // An agent asks mid-task through crew_ask; the answer goes back to it and shows in the chat as a crew line.
-export async function askFromAgent(project_id, agent, task, question) {
+export async function askFromAgent(project_id, agent, task, question, floor = agent?.floor || 'tech') {
   const about = task ? ` while working on task #${task.id} "${task.title}"` : ''
   const plan = task && getOrder(task.order_id)?.plan
-  const r = await ask(project_id, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]${plan ? `\n\nThe plan this task belongs to:\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`` : ''}\n\n${question}`)
+  const r = await ask(project_id, floor, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]${plan ? `\n\nThe plan this task belongs to:\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`` : ''}\n\n${question}`)
   const answer = r.ok ? parseReply(r.text).text || '(no answer)' : `The Orchestrator could not answer: ${String(r.text).slice(0, 500)}`
-  addMessage(project_id, 'system', `${agent?.name || 'An agent'} asked the Orchestrator${about}: ${question}\n\nAnswer: ${answer}`)
+  say(project_id, floor, 'system', `${agent?.name || 'An agent'} asked the lead${about}: ${question}\n\nAnswer: ${answer}`)
   return answer
 }
 
 // Runs the Orchestrator in a fresh session on the clone.
-async function askNow(project_id, prompt, { kind = 'orchestrator' } = {}) {
+async function askNow(project_id, floor, prompt, { kind = 'orchestrator' } = {}) {
   let project = getProject(project_id)
   if (!project.local_path) await ensureClone(project)
   await pullDefault(getProject(project_id))
   project = getProject(project_id)
-  const agents = activeAgents(project_id), orch = lead(agents)
+  const crew = activeAgents(project_id), agents = crew.filter(a => a.floor === floor), orch = lead(agents, floor)
+  const leads = crew.filter(a => a.role === 'orchestrator' && a.floor !== floor)
   const base = {
     project_id, agent_id: orch?.id ?? null, kind, cwd: project.local_path, prompt: typeof prompt === 'function' ? prompt() : prompt,
-    systemPrompt: SYSTEM_ORCH(orch, project, agents), model: orch?.model || 'opus', effort: orch?.effort || 'high',
+    systemPrompt: SYSTEM_ORCH(orch, project, agents, floorOf(floor) || FLOORS[0], leads), model: orch?.model || 'opus', effort: orch?.effort || 'high',
     allowedTools: ['Read', 'Grep', 'Glob', ...ORCH_TOOLS.map(t => `mcp__crew__${t}`)], permissionMode: 'dontAsk',
     mcp: ORCH_TOOLS,
   }
@@ -149,38 +161,40 @@ function offerPlan(project_id, order_id, plan) {
     log(project_id, 'plan', 'Small plan auto-approved', { order_id })
     return approvePlan(order_id).catch(e => log(project_id, 'error', `Auto-approve failed: ${e.message}`, { order_id }))
   }
-  addInbox(project_id, 'plan', `Plan ready: ${plan.summary || getOrder(order_id).text}`, {
+  const f = getOrder(order_id).floor
+  addInbox(project_id, 'plan', `Plan ready${f === 'tech' ? '' : ` (${floorOf(f)?.name || f})`}: ${plan.summary || getOrder(order_id).text}`, {
     body: plan.tasks.map(t => `- ${t.title} (${t.agent || t.role}, ${t.size || 'M'})`).join('\n'), order_id,
   })
 }
 
-export async function chat(project_id, text) {
-  const msg_id = addMessage(project_id, 'user', text)
-  if (waiting.get(project_id) > 0) addMessage(project_id, 'orchestrator', 'Queued: I will get to this right after the current request.')
-  else if (ORDER_WORDS.test(text)) addMessage(project_id, 'orchestrator', 'Got it, looking at the repo.')
+// role 'system' marks an order handed over by another floor's lead rather than typed by the owner.
+export async function chat(project_id, text, floor = 'tech', role = 'user') {
+  const msg_id = say(project_id, floor, role, text)
+  if (waiting.get(`${project_id}:${floor}`) > 0) say(project_id, floor, 'orchestrator', 'Queued: I will get to this right after the current request.')
+  else if (ORDER_WORDS.test(text)) say(project_id, floor, 'orchestrator', 'Got it, looking at the repo.')
   try {
-    const r = await ask(project_id, () => withChat(project_id, msg_id, text))
+    const r = await ask(project_id, floor, () => withChat(project_id, floor, msg_id, text))
     if (!r.ok) throw new Error(r.text || 'session failed')
     const { text: reply, plan } = parseReply(r.text)
-    if (!plan?.tasks.length) return void addMessage(project_id, 'orchestrator', reply || '(no answer)')
-    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan })
+    if (!plan?.tasks.length) return void say(project_id, floor, 'orchestrator', reply || '(no answer)')
+    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan, floor })
     emit('order', project_id, getOrder(order_id))
-    addMessage(project_id, 'orchestrator', reply || plan.summary || 'Here is the plan.', order_id)
+    say(project_id, floor, 'orchestrator', reply || plan.summary || 'Here is the plan.', order_id)
     log(project_id, 'plan', `Plan proposed: ${plan.summary || text} (${plan.tasks.length} tasks)`, { order_id })
     await offerPlan(project_id, order_id, plan)
   } catch (e) {
     log(project_id, 'error', `Orchestrator failed: ${e.message}`)
-    addMessage(project_id, 'orchestrator', `Sorry, that failed: ${e.message.slice(0, 500)}`)
+    say(project_id, floor, 'orchestrator', `Sorry, that failed: ${e.message.slice(0, 500)}`)
   }
 }
 
 export async function revisePlan(order_id, feedback) {
-  const order = getOrder(order_id), pid = order.project_id
+  const order = getOrder(order_id), pid = order.project_id, floor = order.floor
   if (order.status !== 'awaiting_approval') throw new Error(`Order is ${order.status}, not awaiting approval`)
-  addMessage(pid, 'user', `Revise the plan: ${feedback}`)
+  say(pid, floor, 'user', `Revise the plan: ${feedback}`)
   setOrder(order_id, { status: 'planning' })
   try {
-    const r = await ask(pid, `Revise the plan for this order: "${order.text}"
+    const r = await ask(pid, floor, `Revise the plan for this order: "${order.text}"
 
 Current plan:
 \`\`\`json
@@ -194,16 +208,16 @@ Reply with a short summary of what changed, then the full revised plan as one js
     const { text: reply, plan } = parseReply(r.text)
     if (!plan?.tasks.length) {
       setOrder(order_id, { status: 'awaiting_approval' })
-      return void addMessage(pid, 'orchestrator', reply || 'No changes to the plan.', order_id)
+      return void say(pid, floor, 'orchestrator', reply || 'No changes to the plan.', order_id)
     }
     setOrder(order_id, { plan, status: 'awaiting_approval' })
-    addMessage(pid, 'orchestrator', reply || 'Plan revised.', order_id)
+    say(pid, floor, 'orchestrator', reply || 'Plan revised.', order_id)
     log(pid, 'plan', `Plan revised (${plan.tasks.length} tasks)`, { order_id })
     await offerPlan(pid, order_id, plan)
   } catch (e) {
     setOrder(order_id, { status: 'awaiting_approval' })
     log(pid, 'error', `Plan revision failed: ${e.message}`, { order_id })
-    addMessage(pid, 'orchestrator', `Sorry, revising failed: ${e.message.slice(0, 500)}`, order_id)
+    say(pid, floor, 'orchestrator', `Sorry, revising failed: ${e.message.slice(0, 500)}`, order_id)
   }
 }
 
@@ -221,7 +235,7 @@ export async function approvePlan(order_id, tasks = null) {
   log(pid, 'order', `Plan approved: ${plan.summary || order.text}`, { order_id })
 
   const project = getProject(pid)
-  const agents = activeAgents(pid)
+  const agents = activeAgents(pid).filter(a => a.floor === order.floor)
   // Older stored plans carry only "role"; new ones name the agent.
   const specs = plan.tasks.map((p, n) => ({
     key: String(p.key || `t${n + 1}`), title: String(p.title || p.key || `Task ${n + 1}`), description: String(p.description || ''),
@@ -291,7 +305,7 @@ export async function integrateOrder(order_id) {
     }
     let body = diffs.join('\n\n')
     if (body.length > MAX_DIFFS) body = `${body.slice(0, MAX_DIFFS)}\n... truncated`
-    const r = await ask(pid, `Every task of the order "${order.text}" passed review and QA. Before the owner merges, check that the pull requests fit together: no conflicting changes, no duplicated work, shared contracts (APIs, types, names) match on both sides, nothing from the plan is missing.
+    const r = await ask(pid, order.floor, `Every task of the order "${order.text}" passed review and QA. Before the owner merges, check that the pull requests fit together: no conflicting changes, no duplicated work, shared contracts (APIs, types, names) match on both sides, nothing from the plan is missing.
 
 Plan:
 \`\`\`json
@@ -313,7 +327,7 @@ Use "verdict": "problems" and explain in notes when something does not fit.`, { 
     notes = `Integration check failed: ${e.message}`
     log(pid, 'error', notes, { order_id })
   }
-  addMessage(pid, 'orchestrator', `All tasks for "${order.plan?.summary || order.text}" are done and ready to merge.\n\n${notes}`, null)
+  say(pid, order.floor, 'orchestrator', `All tasks for "${order.plan?.summary || order.text}" are done and ready to merge.\n\n${notes}`)
   for (const [n, t] of tasks.filter(t => t.pr_number && !t.merged).entries()) {
     addInbox(pid, 'merge', `Merge PR #${t.pr_number}: ${t.title}`, { body: `Merge order ${n + 1}. ${notes}`, link: t.pr_url, order_id, task_id: t.id })
   }

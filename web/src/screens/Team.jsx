@@ -5,7 +5,7 @@ import QuickTask from '../components/QuickTask.jsx'
 
 const ROLES = ['custom', 'frontend', 'backend', 'planner', 'reviewer', 'qa']
 
-export default function Team({ pid }) {
+export default function Team({ pid, floors, floor }) {
   const [agents, reload, error] = useData(`/projects/${pid}/agents`, ev => ev.project_id === pid &&
     (ev.type === 'agent' || ev.type === 'task' || (ev.type === 'run' && ev.data.status !== 'running')))
   // Live last_event straight from run events, so a busy agent does not trigger a refetch every second.
@@ -30,7 +30,7 @@ export default function Team({ pid }) {
       <ul className="team">
         {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} reload={reload} onQuick={() => setQuick(a.name)} />)}
       </ul>
-      {adding && <AddAgent pid={pid} onClose={() => setAdding(false)} />}
+      {adding && <AddAgent pid={pid} floors={floors} floor={floor} onClose={() => setAdding(false)} />}
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
     </section>
   )
@@ -45,7 +45,7 @@ function AgentCard({ a, lastEvent, reload, onQuick }) {
         <span className="avatar" aria-hidden="true">{initials(a.name)}</span>
         <span className="grow">
           <span className="title">{a.name} <StatusDot status={a.status} /></span>
-          <span className="muted small">{a.role}{a.specialty ? `, ${a.specialty}` : ''}</span>
+          <span className="muted small">{floors?.find(f => f.key === a.floor)?.name || a.floor}, {a.role}{a.specialty ? `, ${a.specialty}` : ''}</span>
         </span>
         <span className="muted small" title="Tokens today">{tokens(a.tokens_today)}</span>
       </a>
@@ -71,7 +71,7 @@ function AgentCard({ a, lastEvent, reload, onQuick }) {
   )
 }
 
-function AddAgent({ pid, onClose }) {
+function AddAgent({ pid, floors, floor, onClose }) {
   const [templates] = useData('/templates')
   const [name, setName] = useState('')
   const [role, setRole] = useState('custom')
@@ -86,15 +86,15 @@ function AddAgent({ pid, onClose }) {
       <div className="stack">
         <h3>From a template</h3>
         <ul className="list">
-          {templates?.filter(t => t.role !== 'orchestrator').map(t => (
-            <li key={t.role} className="row-card card">
-              <span className="grow"><span className="title">{t.name}</span><span className="muted small"> {t.specialty}</span></span>
-              <Button small disabled={busy} onClick={() => create({ role: t.role })}>Add</Button>
+          {templates?.filter(t => t.role !== 'orchestrator' && t.role !== 'support').map(t => (
+            <li key={t.key || t.role} className="row-card card">
+              <span className="grow"><span className="title">{t.name}</span><span className="muted small"> {floors?.find(f => f.key === t.floor)?.name}, {t.specialty}</span></span>
+              <Button small disabled={busy} onClick={() => create({ role: t.key || t.role })}>Add</Button>
             </li>
           ))}
         </ul>
         <h3>Blank</h3>
-        <form className="row wrap" onSubmit={e => { e.preventDefault(); create({ role, name: name.trim() }) }}>
+        <form className="row wrap" onSubmit={e => { e.preventDefault(); create({ role, name: name.trim(), floor: floor || 'tech' }) }}>
           <label className="field grow"><span>Name</span>
             <input value={name} onChange={e => setName(e.target.value)} required placeholder="Docs Writer" />
           </label>
