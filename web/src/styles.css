@@ -262,11 +262,14 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
 .task-card:hover { border-color: var(--accent); }
 .task-card .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
 @media (min-width: 900px) {
-  .board-page { max-width: none; }
+  /* One screen: the board fills what is left of the viewport and each column scrolls on its own. */
+  .main:has(.board-page) { height: 100dvh; display: flex; flex-direction: column; }
+  .board-page { max-width: none; width: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .filters { max-width: 560px; }
   .done-toggle, .board-list { display: none; }
-  .board { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; align-items: start; }
-  .column { background: var(--surface-2); border-radius: var(--radius); padding: 10px; min-height: 200px; }
+  .board { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; }
+  .column { background: var(--surface-2); border-radius: var(--radius); padding: 10px; min-height: 0; overflow-y: auto; }
+  .column h2 { position: sticky; top: -10px; margin: -10px -10px 0; padding: 10px; background: var(--surface-2); z-index: 1; }
   .column .task-card .badge { display: none; }
 }
 
