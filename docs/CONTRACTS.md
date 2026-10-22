@@ -88,9 +88,12 @@ prDiff(project, number) -> string                  // gh pr diff, truncated to 2
 
 ### server/onboarding.js
 ```js
-runOnboarding(project_id) -> Promise<void>
+startInterview(project_id, { rerun }) -> Promise<void>   // fresh session, status interviewing, first turn automatic
+askOnboarding(project_id, text) -> Promise<void>         // one interview turn; a reply with a proposal sets status proposed
+applyProposal(project_id, keep: number[]) -> Promise     // throws if no proposal; hires, removes, then writes the docs
+onboarder(project_id) -> agent                           // the Onboarding agent (role onboarding), created on demand
 ```
-F1. Sets `projects.onboarding_status` running -> pr_open (or failed). Clone, worktree on `crew/onboarding`, run the Orchestrator agent profile with Read/Grep/Glob/Write/Edit, permissionMode `acceptEdits`, prompt: read the repo, write `CLAUDE.md` (what the app is, stack, commands to install/test/build, architecture, conventions), `.crew/PLAYBOOK.md` (handoffs, branch rules `crew/<task>`, definition of done), and `.crew/owned-paths.json` = `{ "<role>": { "owned_paths": [...], "readonly_paths": [...] } }` for every role in the roster. Gate: only those three paths may change. Commit, push, open PR "Crew onboarding", apply the proposed paths to the agents, store `onboarding_pr`, `addInbox(kind 'merge')`, log. When `scheduler` sees that PR merged it sets `onboarding_status = 'done'`.
+Statuses: `interviewing -> proposed -> running -> pr_open -> done | failed` (`pending` = projects from before v2). The Onboarding agent runs on `claude -p` with a resumed session (kv `onboard:<pid>`), Read/Grep/Glob only, messages on `channel = 'onboarding'`. Its proposal is the last ```json block with `agents`, parsed by `rules.parseProposal` into `projects.proposal` `{brief, floors, agents[{template?|custom fields, name, floor, locked?}], first_order, notes}`; every opened floor gets its lead and reviewer (Tech also QA) as locked agents. Apply hires unhired chosen agents, removes office agents not chosen (re-run), then a writer session (Opus, acceptEdits) writes CLAUDE.md, PLAYBOOK, owned-paths.json on a fresh `crew/onboarding-<id>` branch; the server writes `.crew/BRIEF.md` from the brief. Gate: only those four paths. Blank projects push straight to the default branch (`done`) and send `first_order` to the Tech lead; others open a PR (`pr_open`), merged as before.
 
 ## Brain module (owner: Brain agent)
 
@@ -152,10 +155,14 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | Method | Path | Does |
 | --- | --- | --- |
 | GET | /api/projects | list |
-| POST | /api/projects `{repo}` | `repoInfo`, insert project, `seedRoster`, start `runOnboarding` in background, return project |
+| POST | /api/projects `{source:'github', repo}` or `{source:'local', path, create_repo}` or `{source:'blank', parent, folder, name, prd}` | local without a GitHub remote needs `create_repo: true` (initRepo + private `gh repo create`); blank makes the folder, `docs/PRD.md`, first commit and the repo. Insert project, Support, `startInterview` |
+| GET | /api/fs/dirs `?path=` | subfolders (no path: home and drives) |
+| POST | /api/projects/inspect `{path}` | `inspectFolder`: git, GitHub repo, commits, dirty count, files, secret-looking files |
+| GET, POST | /api/projects/:id/onboarding `{text}` | interview messages + proposal + status; send an answer |
+| POST | /api/projects/:id/onboarding/apply `{keep}` | approve the proposal |
 | GET | /api/projects/:id | project + `{ running_runs, tokens_today, rate_limit }` |
 | PATCH | /api/projects/:id `{name?, settings?}` | settings merged shallowly |
-| POST | /api/projects/:id/onboard | re-run onboarding |
+| POST | /api/projects/:id/onboard | re-run onboarding (new interview with the current office) |
 | POST | /api/projects/:id/kill | kill switch: `paused = 1`, `killProject`, running tasks back to planned, log |
 | POST | /api/projects/:id/resume | `paused = 0`, `kick()` |
 | GET | /api/projects/:id/messages | last 200, oldest first |

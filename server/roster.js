@@ -53,6 +53,13 @@ export const TEMPLATES = [
   },
 ]
 
+// Interviews the owner and proposes the office; never takes tasks (no owned paths).
+export const ONBOARDER = {
+  role: 'onboarding', floor: 'tech', name: 'Onboarding', specialty: 'Interviews the owner and proposes the office',
+  owned_paths: [], readonly_paths: ['**'], instructions: '', model: 'opus', effort: 'high', max_parallel: 1, removable: 0,
+  permissions: { open_pr: false, comment: false, run_tests: false, merge: false },
+}
+
 // Floors: one team per kind of work, each with its own lead (role orchestrator) and reviewer. Every floor works in the
 // same repo; non-tech floors write documents in their own top-level folder, so they ship as PRs like code does.
 export const FLOORS = [

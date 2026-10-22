@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs'
+import { join, resolve, dirname, basename } from 'node:path'
 import { DATA_DIR, update } from './db.js'
 
 function exec(cmd, args, cwd) {
@@ -155,3 +155,73 @@ export const pullDefault = serial(pullDefaultNow)
 export const createWorktree = serial(createWorktreeNow)
 export const removeWorktree = serial(removeWorktreeNow)
 export const pushBranch = serial(pushBranchNow)
+
+// Owner folders: the crew never works in them. It reads what is there, and for a folder with no GitHub remote creates a
+// private repo from it; after that the crew works in its own clone like any GitHub project.
+
+export const parseRemote = url => /github\.com[:/]([\w.-]+)\/([\w.-]+?)(\.git)?\/?$/.exec(String(url || '').trim())?.slice(1, 3).join('/') ?? null
+
+const SECRET = /^(\.env(\..+)?|.*\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)|credentials\.json|service-account.*\.json)$/i
+const SAFE = /^\.env\.(example|sample|template)$/i
+const isSecret = name => SECRET.test(name) && !SAFE.test(name)
+const SKIP = new Set(['.git', 'node_modules', '.venv', 'venv', '__pycache__', 'dist', 'build', '.next'])
+
+// File count and secret-looking names under dir, capped so a huge folder does not stall the request.
+function walk(dir, out = { files: 0, secrets: [] }, rel = '') {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (out.files > 20000) break
+    const r = rel ? `${rel}/${e.name}` : e.name
+    if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(join(dir, e.name), out, r) }
+    else { out.files++; if (isSecret(e.name)) out.secrets.push(r) }
+  }
+  return out
+}
+
+export async function inspectFolder(path) {
+  const abs = resolve(String(path || ''))
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) return { path: abs, exists: false }
+  const isGit = existsSync(join(abs, '.git'))
+  const info = { path: abs, exists: true, name: basename(abs), git: isGit, repo: null, commits: false, dirty: 0, files: 0, secrets: [] }
+  if (isGit) {
+    info.repo = parseRemote(await git(abs, 'remote', 'get-url', 'origin').catch(() => ''))
+    info.commits = await git(abs, 'rev-parse', '--verify', '--quiet', 'HEAD').then(() => true, () => false)
+    info.dirty = (await git(abs, 'status', '--porcelain')).split('\n').filter(Boolean).length
+    const tracked = (await git(abs, 'ls-files')).split('\n').filter(Boolean)
+    info.files = tracked.length
+    // Already committed secrets would go to GitHub with the history; the owner has to see that.
+    info.secrets = tracked.filter(f => isSecret(f.split('/').pop()))
+  } else Object.assign(info, walk(abs))
+  return info
+}
+
+const IGNORE = ['.env', '.env.*', '!.env.example', '*.pem', '*.key', 'node_modules/', '.DS_Store']
+
+// A first commit for a folder that has none: default ignores go in first so secrets and dependencies stay out.
+export async function initRepo(path, files = {}) {
+  for (const [rel, text] of Object.entries(files)) {
+    const f = join(path, rel)
+    if (existsSync(f)) continue
+    mkdirSync(dirname(f), { recursive: true })
+    writeFileSync(f, text)
+  }
+  const gi = join(path, '.gitignore')
+  const have = existsSync(gi) ? readFileSync(gi, 'utf8').split(/\r?\n/) : []
+  const missing = IGNORE.filter(l => !have.includes(l))
+  if (missing.length) appendFileSync(gi, `${have.length && have.at(-1) !== '' ? '\n' : ''}${missing.join('\n')}\n`)
+  if (!existsSync(join(path, '.git'))) await git(path, 'init', '-b', 'main')
+  await git(path, 'add', '-A')
+  await git(path, 'commit', '-m', 'Initial commit')
+}
+
+export const ghLogin = () => gh('api', 'user', '--jq', '.login')
+
+// Creates a private GitHub repo from the folder, sets it as origin and pushes the current branch. Returns "owner/name".
+export async function createRepoFromFolder(path, name) {
+  const out = await exec('gh', ['repo', 'create', name, '--private', '--source', path, '--remote', 'origin', '--push'], path)
+  return parseRemote(out.split('\n').find(l => l.includes('github.com'))) || `${await ghLogin()}/${name}`
+}
+
+async function pushToNow(path, ref) {
+  await git(path, 'push', 'origin', ref)
+}
+export const pushTo = serial(pushToNow)

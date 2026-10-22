@@ -11,6 +11,7 @@ import Inbox from './screens/Inbox.jsx'
 import Wall from './screens/Wall.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
+import Onboarding from './screens/Onboarding.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -20,7 +21,7 @@ const ICONS = {
 }
 const TABS = [['home', 'Home'], ['command', 'Command'], ['wall', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { inbox: 'home', vault: 'home', team: 'wall', agent: 'wall' }
+const TAB_OF = { inbox: 'home', vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -75,13 +76,14 @@ function Shell() {
   const ctx = { pid, project: p, reloadProject: reloadDetail, floors, floor, setFloor }
 
   let screen
-  if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={id => { choose(id); location.hash = '#/home' }} />
+  if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={(id, hash = '#/home') => { choose(id); location.hash = hash }} />
   else if (view === 'board') screen = <Board key={route.id} {...ctx} orderId={route.id} />
   else if (view === 'team') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} />
   else if (view === 'wall') screen = <Wall {...ctx} />
   else if (view === 'vault') screen = <Vault {...ctx} />
+  else if (view === 'onboarding') screen = <Onboarding {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
   else screen = <Home {...ctx} />
 
@@ -112,6 +114,9 @@ function Shell() {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
+        {view !== 'onboarding' && ['interviewing', 'proposed'].includes(p?.onboarding_status) && (
+          <a className="banner onboard-banner" href="#/onboarding">{p.onboarding_status === 'proposed' ? 'Your office proposal is ready. Review and approve it.' : 'Onboarding is in progress. Answer the questions to set up your office.'}</a>
+        )}
         <main id="content" key={pid}><Boundary key={route.view}>{screen}</Boundary></main>
       </div>
     </div>

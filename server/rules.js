@@ -204,3 +204,59 @@ export function chainOrder(tasks) {
   if (![...size.values()].includes(tasks.length - 1)) return null
   return [...tasks].sort((a, b) => size.get(a.id) - size.get(b.id) || a.id - b.id).map(t => t.id)
 }
+
+// Office proposal from the Onboarding agent: the last ```json block with an "agents" array. Pure: the caller passes the
+// floor list and templates. Unknown entries are dropped with a note; every floor gets its lead and reviewer (Tech also QA),
+// marked locked so the owner cannot untick them.
+const MODELS = ['opus', 'sonnet', 'haiku']
+const REQUIRED = f => f === 'tech' ? ['orchestrator', 'reviewer', 'qa'] : [`${f}-lead`, `${f}-reviewer`]
+
+export function parseProposal(text, { floors, templates }) {
+  const block = jsonBlocks(text).findLast(b => Array.isArray(b.value?.agents))
+  if (!block) return { text: String(text ?? '').trim(), proposal: null }
+  const v = block.value, notes = []
+  const keyOf = t => t.key || t.role
+  const floorKeys = new Set(floors.map(f => f.key))
+  const open = new Set(['tech', ...(Array.isArray(v.floors) ? v.floors : []).filter(f => floorKeys.has(f))])
+  const str = (x, max = 4000) => typeof x === 'string' ? x.trim().slice(0, max) : ''
+  const agents = []
+  for (const a of v.agents) {
+    if (!a || typeof a !== 'object') continue
+    if (a.template != null) {
+      const t = templates.find(t => keyOf(t) === a.template)
+      if (!t || t.role === 'support' || t.role === 'onboarding') { notes.push(`Unknown template "${a.template}" left out.`); continue }
+      agents.push({ template: keyOf(t), name: str(a.name, 80) || t.name, floor: t.floor || 'tech', role: t.role, specialty: t.specialty })
+      continue
+    }
+    const name = str(a.name, 80), floor = floorKeys.has(a.floor) ? a.floor : 'tech'
+    const owned = Array.isArray(a.owned_paths) ? a.owned_paths.filter(p => typeof p === 'string' && p.trim() && !p.includes('..')).map(p => p.trim()) : []
+    if (!name || !owned.length) { notes.push(`Custom agent "${name || '?'}" needs a name and owned paths; left out.`); continue }
+    agents.push({
+      name, floor, role: str(a.role, 40).toLowerCase().replace(/[^a-z0-9-]+/g, '-') || 'custom', specialty: str(a.specialty, 200),
+      instructions: str(a.instructions), owned_paths: owned, readonly_paths: ['**'], model: MODELS.includes(a.model) ? a.model : 'sonnet',
+    })
+  }
+  for (const a of agents) open.add(a.floor)
+  for (const f of open) for (const k of REQUIRED(f)) {
+    const t = templates.find(t => keyOf(t) === k)
+    const have = agents.find(a => a.template === k)
+    if (have) have.locked = true
+    else if (t) agents.unshift({ template: k, name: t.name, floor: f, role: t.role, specialty: t.specialty, locked: true })
+  }
+  // Names address agents (crew_post, plans), so they must be unique.
+  const seen = new Map()
+  for (const a of agents) {
+    const n = (seen.get(a.name) || 0) + 1
+    seen.set(a.name, n)
+    if (n > 1) a.name = `${a.name} ${n}`
+  }
+  const order = floors.map(f => f.key)
+  return {
+    text: String(text).replace(block.raw, '').trim(),
+    proposal: {
+      brief: str(v.brief, 20000), floors: order.filter(f => open.has(f)),
+      agents: agents.sort((a, b) => order.indexOf(a.floor) - order.indexOf(b.floor)),
+      first_order: str(v.first_order) || null, notes,
+    },
+  }
+}

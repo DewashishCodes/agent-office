@@ -43,7 +43,7 @@ const EXAMPLE_PLAN = `{
 }`
 
 // Support is not part of the build team; it never gets planned tasks.
-const roster = agents => agents.filter(a => a.role !== 'support').map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
+const roster = agents => agents.filter(a => !['support', 'onboarding'].includes(a.role)).map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
 
 // Non-tech floors plan documents in their folder; code belongs to the Tech floor.
 const floorScope = (f, leads) => `${f.key === 'tech' ? '' : `
@@ -57,7 +57,7 @@ const SYSTEM_ORCH = (lead, project, agents, floor, leads) => `You are ${lead?.na
 
 ${lead?.instructions || ''}
 ${floorScope(floor, leads)}
-Before answering about the code or planning, read CLAUDE.md and .crew/PLAYBOOK.md in the repo root if they exist: they describe the stack, commands and team rules. Look at the real code before you plan; do not guess file paths.
+Before answering about the code or planning, read .crew/BRIEF.md, CLAUDE.md and .crew/PLAYBOOK.md in the repo root if they exist: they describe what the owner is building, the stack, commands and team rules. Look at the real code before you plan; do not guess file paths.
 
 Your crew (only agents that own paths can take tasks):
 ${roster(agents)}

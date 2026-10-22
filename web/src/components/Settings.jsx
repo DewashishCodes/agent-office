@@ -63,6 +63,8 @@ export default function Settings({ project, onClose, reload }) {
           <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving' : 'Save settings'}</Button>
           <Button variant="ghost" onClick={onClose}>Close</Button>
           {saved && <span className="ok small" role="status">Saved</span>}
+          <span className="grow" />
+          <Button variant="ghost" disabled={busy} onClick={() => run(async () => { await api(`/projects/${project.id}/onboard`, { method: 'POST' }); onClose(); location.hash = '#/onboarding' })}>Re-run onboarding</Button>
         </div>
         <ErrorText error={error} />
       </form>

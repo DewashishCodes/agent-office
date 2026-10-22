@@ -7,7 +7,7 @@ import { emit } from './bus.js'
 // Shared context vault: owner notes, decisions agents record, uploaded files, plus the repo's own crew docs (read live from the clone).
 // Agents get only the titles in their prompt and pull what they need with vault_search / vault_read.
 
-export const REPO_DOCS = ['CLAUDE.md', '.crew/PLAYBOOK.md', '.crew/owned-paths.json']
+export const REPO_DOCS = ['CLAUDE.md', '.crew/BRIEF.md', '.crew/PLAYBOOK.md', '.crew/owned-paths.json']
 const TEXT_EXT = /^\.(md|txt|json|ya?ml|csv|tsv|js|jsx|mjs|cjs|ts|tsx|py|go|rs|java|rb|php|css|scss|html|xml|sql|sh|toml|ini|env\.example|log)$/i
 const MAX_TEXT = 512 * 1024
 

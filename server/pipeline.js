@@ -66,8 +66,8 @@ ${t.description}
 ${t.acceptance.map((c, i) => `${i + 1}. ${c}`).join('\n') || '(none given, judge from the description)'}`
 
 const docs = async t => {
-  const [claude, playbook] = await Promise.all([readOpt(join(t.worktree, 'CLAUDE.md')), readOpt(join(t.worktree, '.crew', 'PLAYBOOK.md'))])
-  return [claude && `# CLAUDE.md\n\n${claude}`, playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`].filter(Boolean).join('\n\n')
+  const [claude, playbook, brief] = await Promise.all(['CLAUDE.md', '.crew/PLAYBOOK.md', '.crew/BRIEF.md'].map(f => readOpt(join(t.worktree, f))))
+  return [brief && `# .crew/BRIEF.md\n\n${brief}`, claude && `# CLAUDE.md\n\n${claude}`, playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`].filter(Boolean).join('\n\n')
 }
 
 // The task's own floor checks it. A floor without a reviewer borrows any; QA (tests and builds) exists only where code is.

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS projects (
   local_path TEXT,                        -- clone under data/repos
   settings TEXT NOT NULL DEFAULT '{}',    -- JSON, see DEFAULT_SETTINGS
   orchestrator_session_id TEXT,           -- unused since v2: every Orchestrator request is a fresh session
-  onboarding_status TEXT NOT NULL DEFAULT 'pending', -- pending | running | pr_open | done | failed
+  onboarding_status TEXT NOT NULL DEFAULT 'pending', -- pending | interviewing | proposed | running | pr_open | done | failed
   onboarding_pr INTEGER,
   paused INTEGER NOT NULL DEFAULT 0,      -- kill switch state
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -198,6 +198,10 @@ addColumn('messages', 'suggest', 'TEXT')                       // support: an or
 addColumn('agents', 'floor', "TEXT NOT NULL DEFAULT 'tech'")   // tech | design | docs | ... see roster.FLOORS
 addColumn('orders', 'floor', "TEXT NOT NULL DEFAULT 'tech'")   // the floor whose lead planned it
 addColumn('messages', 'floor', "TEXT NOT NULL DEFAULT 'tech'") // command chat is per floor
+addColumn('projects', 'source', "TEXT NOT NULL DEFAULT 'github'") // github | local | blank: how the project came in
+addColumn('projects', 'source_path', 'TEXT')                    // the owner's own folder; local_path is the crew clone
+addColumn('projects', 'proposal', 'TEXT')                       // JSON office proposal from the Onboarding agent
+addColumn('projects', 'rerun', 'INTEGER NOT NULL DEFAULT 0')    // 1 while a re-run of onboarding is in progress
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
@@ -214,7 +218,7 @@ export const DEFAULT_SETTINGS = {
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().
-const JSON_COLS = ['settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub', 'pending_permission', 'tags']
+const JSON_COLS = ['proposal', 'settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub', 'pending_permission', 'tags']
 
 function parse(r) {
   if (!r) return r

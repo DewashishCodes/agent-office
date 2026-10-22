@@ -89,12 +89,13 @@ Crew tools (MCP server "crew"):
 - Messages from crew mates or the owner can arrive while you work, marked [Message from ...]. Take them into account.`
 
 async function taskPrompt(t, a) {
-  const [claude, playbook] = await Promise.all([readOpt(join(t.worktree, 'CLAUDE.md')), readOpt(join(t.worktree, '.crew', 'PLAYBOOK.md'))])
+  const [claude, playbook, brief] = await Promise.all(['CLAUDE.md', '.crew/PLAYBOOK.md', '.crew/BRIEF.md'].map(f => readOpt(join(t.worktree, f))))
   const notes = all('SELECT text FROM agent_notes WHERE agent_id = ? ORDER BY id', a.id).map(n => `- ${n.text}`).join('\n')
   const deps = t.depends_on.map(getTask).filter(Boolean)
   const messages = takeQueued(a.id)
   const vault = vaultIndex(t.project_id)
   return [
+    brief && `# .crew/BRIEF.md (what the owner is building)\n\n${brief}`,
     claude && `# CLAUDE.md\n\n${claude}`,
     playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`,
     notes && `# Notes from the owner for you\n\n${notes}`,

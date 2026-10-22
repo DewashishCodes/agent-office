@@ -346,3 +346,19 @@ h1 .count { vertical-align: middle; }
   .nav-min .tab { width: 44px; height: 44px; padding: 0; justify-content: center; }
   .nav-min .tab .count { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
 }
+
+/* New project wizard and onboarding. */
+.doors { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.door { display: flex; flex-direction: column; gap: 4px; padding: 12px; text-align: left; font: inherit; color: var(--text); cursor: pointer; background: var(--surface-2); border: 2px solid transparent; border-radius: var(--radius); }
+.door:hover { border-color: var(--border); }
+.door.on { border-color: var(--accent); background: var(--accent-soft); }
+.folder-picker { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.fp-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--surface-2); }
+.fp-list { max-height: 240px; overflow: auto; }
+.fp-list li > button { display: block; width: 100%; min-height: 40px; padding: 0 12px; text-align: left; font: inherit; font-size: 14px; color: var(--text); background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer; }
+.fp-list li:first-child > button { border-top: 0; }
+.fp-list li > button:hover { background: var(--surface-2); }
+.fp-list li.muted { padding: 10px 12px; }
+.msg.onboarding .meta, .msg.system .meta { color: var(--accent); }
+.proposal h3 { display: flex; align-items: center; gap: 6px; }
+.onboard-banner { background: var(--accent-soft); color: var(--accent); text-decoration: none; }

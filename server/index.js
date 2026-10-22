@@ -1,21 +1,22 @@
 import express from 'express'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { join } from 'node:path'
-import { existsSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
+import { join, resolve, dirname, isAbsolute } from 'node:path'
+import { homedir } from 'node:os'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync } from 'node:fs'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
 import { bus, emit } from './bus.js'
-import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, seedRoster, openFloor } from './roster.js'
+import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
 import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
   hookEvent, watchPty, ptyInput, ptyResize, ptyLogPath } from './runner.js'
-import { repoInfo, mergePR } from './github.js'
-import { runOnboarding } from './onboarding.js'
+import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder } from './github.js'
+import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, markOnboarded, cancelOrder, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
 import { matchAgent } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
-import { askSupport, ensureSupport } from './support.js'
+import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
 
 if (!process.env.OWNER_TOKEN) {
@@ -116,14 +117,60 @@ app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: 
 
 app.get('/api/projects', (req, res) => res.json(all('SELECT * FROM projects ORDER BY id')))
 
+// Folder browser for the new project wizard: the owner picks folders on this PC from the phone.
+app.get('/api/fs/dirs', (req, res) => {
+  const raw = req.query.path
+  if (!raw) {
+    const drives = process.platform === 'win32' ? [...'CDEFGHIJ'].map(d => `${d}:\\`).filter(d => existsSync(d)) : ['/']
+    return res.json({ path: null, parent: null, dirs: [homedir(), ...drives] })
+  }
+  const path = resolve(String(raw))
+  let dirs
+  try { dirs = readdirSync(path, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('$')).map(e => e.name) }
+  catch { throw fail(400, `cannot open ${path}`) }
+  const parent = dirname(path)
+  res.json({ path, parent: parent === path ? null : parent, dirs: dirs.sort((a, b) => a.localeCompare(b)) })
+})
+
+const absPath = v => { if (typeof v !== 'string' || !isAbsolute(v)) throw fail(400, 'path must be an absolute folder path'); return resolve(v) }
+const repoName = v => String(v || '').trim().replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90)
+
+app.post('/api/projects/inspect', async (req, res) => res.json(await inspectFolder(absPath(req.body?.path))))
+
+// Three doors: a GitHub repo, an existing folder (a private repo is created from it when it has no GitHub remote, after
+// the owner confirmed), or a blank folder with the owner's idea or PRD. The crew always works in its own clone.
 app.post('/api/projects', async (req, res) => {
-  const repo = req.body?.repo
-  if (typeof repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw fail(400, 'repo must be owner/name')
-  if (get('SELECT id FROM projects WHERE repo = ?', repo)) throw fail(409, 'project already exists')
+  const b = req.body ?? {}
+  const source = b.source || 'github'
+  let repo, source_path = null
+  if (source === 'github') {
+    repo = b.repo
+    if (typeof repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw fail(400, 'repo must be owner/name')
+  } else if (source === 'local') {
+    const info = await inspectFolder(absPath(b.path))
+    if (!info.exists) throw fail(400, `${info.path} is not a folder`)
+    source_path = info.path
+    repo = info.repo
+    if (!repo) {
+      if (b.create_repo !== true) throw fail(400, 'This folder has no GitHub remote. Confirm creating a private repo for it.')
+      if (!info.commits) await initRepo(info.path)
+      repo = await createRepoFromFolder(info.path, repoName(b.name || info.name))
+    }
+  } else if (source === 'blank') {
+    const name = str(b.name, 'name'), prd = str(b.prd, 'prd')
+    const folder = repoName(b.folder || name)
+    if (!folder) throw fail(400, 'folder name is required')
+    source_path = join(absPath(b.parent), folder)
+    if (existsSync(source_path) && readdirSync(source_path).length) throw fail(409, `${source_path} already exists and is not empty`)
+    mkdirSync(source_path, { recursive: true })
+    await initRepo(source_path, { 'docs/PRD.md': `${prd.trim()}\n`, 'README.md': `# ${name}\n\nSee docs/PRD.md.\n` })
+    repo = await createRepoFromFolder(source_path, folder)
+  } else throw fail(400, 'source must be github, local or blank')
+  if (get('SELECT id FROM projects WHERE repo = ?', repo)) throw fail(409, `${repo} is already a project`)
   const info = await repoInfo(repo)
-  const id = insert('projects', { name: info.name, repo, default_branch: info.default_branch })
-  seedRoster(id)
-  background(id, runOnboarding(id))
+  const id = insert('projects', { name: b.name?.trim() || info.name, repo, default_branch: info.default_branch, source, source_path })
+  supportAgent(id)
+  background(id, startInterview(id))
   const p = getProject(id)
   emit('project', id, p)
   res.json(p)
@@ -161,9 +208,30 @@ app.patch('/api/projects/:id', (req, res) => {
   res.json(out)
 })
 
+// Re-run onboarding (also the retry after a failure): a new interview with the current office in the prompt.
 app.post('/api/projects/:id/onboard', (req, res) => {
   const p = project(req)
-  background(p.id, runOnboarding(p.id))
+  if (p.onboarding_status === 'running') throw fail(409, 'Onboarding is writing the crew docs right now')
+  background(p.id, startInterview(p.id, { rerun: !['pending', 'failed'].includes(p.onboarding_status) || !!p.rerun }))
+  res.status(202).json({ ok: true })
+})
+
+app.get('/api/projects/:id/onboarding', (req, res) => {
+  const p = project(req)
+  res.json({ messages: all(`SELECT * FROM messages WHERE project_id = ? AND channel = 'onboarding' ORDER BY id`, p.id), proposal: p.proposal, status: p.onboarding_status })
+})
+
+app.post('/api/projects/:id/onboarding', (req, res) => {
+  const p = project(req)
+  if (!['interviewing', 'proposed'].includes(p.onboarding_status)) throw fail(409, 'Onboarding is not in an interview. Re-run it first.')
+  background(p.id, askOnboarding(p.id, str(req.body?.text, 'text')))
+  res.status(202).json({ ok: true })
+})
+
+app.post('/api/projects/:id/onboarding/apply', (req, res) => {
+  const p = project(req), keep = req.body?.keep ?? []
+  if (!Array.isArray(keep) || !keep.every(Number.isInteger)) throw fail(400, 'keep must be a list of agent indexes')
+  try { background(p.id, applyProposal(p.id, keep)) } catch (e) { throw fail(409, e.message) }
   res.status(202).json({ ok: true })
 })
 
