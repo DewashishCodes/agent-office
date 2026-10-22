@@ -181,7 +181,8 @@ function offerPlan(project_id, order_id, plan) {
 }
 
 // role 'system' marks an order handed over by another floor's lead rather than typed by the owner. No chat_id starts a new chat.
-export async function chat(project_id, text, floor = 'tech', role = 'user', chat_id = newChat(project_id, floor, text)) {
+// hotfix: a plan from this message ships without PRs, review or QA.
+export async function chat(project_id, text, floor = 'tech', role = 'user', chat_id = newChat(project_id, floor, text), hotfix = false) {
   const msg_id = say(project_id, floor, role, text, null, chat_id)
   if (waiting.get(`${project_id}:${floor}`) > 0) say(project_id, floor, 'orchestrator', 'Queued: I will get to this right after the current request.', null, chat_id)
   else if (ORDER_WORDS.test(text)) say(project_id, floor, 'orchestrator', 'Got it, looking at the repo.', null, chat_id)
@@ -190,7 +191,7 @@ export async function chat(project_id, text, floor = 'tech', role = 'user', chat
     if (!r.ok) throw new Error(r.text || 'session failed')
     const { text: reply, plan } = parseReply(r.text)
     if (!plan?.tasks.length) return void say(project_id, floor, 'orchestrator', reply || '(no answer)', null, chat_id)
-    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan, floor, chat_id })
+    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan, floor, chat_id, hotfix })
     emit('order', project_id, getOrder(order_id))
     say(project_id, floor, 'orchestrator', reply || plan.summary || 'Here is the plan.', order_id)
     log(project_id, 'plan', `Plan proposed: ${plan.summary || text} (${plan.tasks.length} tasks)`, { order_id })

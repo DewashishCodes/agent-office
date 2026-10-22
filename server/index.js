@@ -8,7 +8,7 @@ import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
 import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
   hookEvent, watchPty, ptyInput, ptyResize, ptyLogPath } from './runner.js'
-import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder } from './github.js'
+import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder, ensureClone, pullDefault, listBranches } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
@@ -190,12 +190,25 @@ app.get('/api/projects/:id', (req, res) => {
   })
 })
 
-app.patch('/api/projects/:id', (req, res) => {
+app.get('/api/projects/:id/branches', async (req, res) => {
   const p = project(req)
-  const { name, settings, ...rest } = req.body ?? {}
+  await ensureClone(p)
+  res.json({ current: p.default_branch, branches: await listBranches(getProject(p.id)) })
+})
+
+app.patch('/api/projects/:id', async (req, res) => {
+  const p = project(req)
+  const { name, settings, default_branch, ...rest } = req.body ?? {}
   if (Object.keys(rest).length) throw fail(400, `${Object.keys(rest)[0]} is not editable`)
   const f = {}
   if (name !== undefined) f.name = str(name, 'name')
+  // The working branch: new tasks start from it, PRs target it and hotfixes push to it. Running tasks keep their base.
+  if (default_branch !== undefined && default_branch !== p.default_branch) {
+    await ensureClone(p)
+    if (!(await listBranches(getProject(p.id))).includes(default_branch)) throw fail(400, `no branch ${default_branch} on GitHub`)
+    await pullDefault({ ...getProject(p.id), default_branch })
+    f.default_branch = default_branch
+  }
   if (settings !== undefined) {
     if (!isObj(settings)) throw fail(400, 'settings must be an object')
     for (const [k, v] of Object.entries(settings)) {
@@ -278,7 +291,7 @@ app.post('/api/projects/:id/messages', (req, res) => {
   // Without chat_id the message starts a new chat; its id goes back so the screen can follow it.
   const chat_id = req.body?.chat_id == null ? newChat(p.id, floor, text)
     : found(get('SELECT id FROM chats WHERE id = ? AND project_id = ? AND floor = ?', int(req.body.chat_id), p.id, floor), 'chat').id
-  background(p.id, chat(p.id, text, floor, 'user', chat_id))
+  background(p.id, chat(p.id, text, floor, 'user', chat_id, req.body?.hotfix === true))
   res.status(202).json({ ok: true, chat_id })
 })
 
@@ -344,20 +357,20 @@ app.get('/api/projects/:id/tasks', (req, res) => {
   res.json(all(sql + ' ORDER BY t.id', ...params))
 })
 
-// Direct task: a one-task order for a named agent, no plan round trip. Reviewer and QA still run.
+// Direct task: a one-task order for a named agent, no plan round trip. Reviewer and QA still run, unless it is a hotfix.
 app.post('/api/projects/:id/tasks', (req, res) => {
   const p = project(req)
-  const { agent: name, title, description = '', acceptance = [], files = [] } = req.body ?? {}
+  const { agent: name, title, description = '', acceptance = [], files = [], hotfix = false } = req.body ?? {}
   str(title, 'title')
   if (typeof description !== 'string' || !isStrs(acceptance) || !isStrs(files)) throw fail(400, 'description must be text, acceptance and files lists of text')
   const a = activeAgents(p.id).find(x => x.name === str(name, 'agent'))
   if (!a?.owned_paths.length) throw fail(400, `${name} is not an agent that owns paths`)
   if (!matchAgent([a], { files })) throw fail(400, `${a.name} does not own ${files.join(', ')}`)
   const spec = { key: 't1', title, agent: a.name, description, acceptance, files, size: 'S', depends_on: [] }
-  const order_id = insert('orders', { project_id: p.id, text: title, status: 'in_progress', plan: { summary: title, direct: true, tasks: [spec] } })
+  const order_id = insert('orders', { project_id: p.id, text: title, status: 'in_progress', plan: { summary: title, direct: true, tasks: [spec] }, hotfix: hotfix === true })
   const task_id = insert('tasks', { project_id: p.id, order_id, plan_key: 't1', title, description, role: a.role, plan_agent: a.name, acceptance, files, size: 'S', agent_id: a.id })
   emit('order', p.id, getOrder(order_id))
-  log(p.id, 'order', `Quick task for ${a.name}: ${title}`, { order_id, task_id, agent_id: a.id })
+  log(p.id, 'order', `${hotfix === true ? 'Hotfix' : 'Quick task'} for ${a.name}: ${title}`, { order_id, task_id, agent_id: a.id })
   const t = setTask(task_id, {})
   kick()
   res.json(t)
