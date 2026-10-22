@@ -2,10 +2,12 @@ import { all, get, run, insert, getAgent, getTask, getProject, activeAgents, add
 import { emit } from './bus.js'
 import { runForToken, sendToRun, canDeliver } from './runner.js'
 import { askFromAgent } from './orchestrator.js'
+import { searchVault, describeHits, readForAgent, addEntry } from './vault.js'
 
 // Crew tools over MCP streamable HTTP: POST JSON-RPC in, application/json out. Only what Claude Code calls is implemented.
 
-export const CREW_TOOLS = ['crew_post', 'crew_ask', 'crew_read', 'crew_task_status']
+export const CREW_TOOLS = ['crew_post', 'crew_ask', 'crew_read', 'crew_task_status', 'vault_search', 'vault_read', 'vault_write']
+export const VAULT_READ = ['vault_search', 'vault_read']
 export const mcpNames = tools => tools.map(t => `mcp__crew__${t}`)
 
 const PEER_WAIT_MS = 10 * 60 * 1000
@@ -26,6 +28,18 @@ const TOOLS = {
   crew_task_status: {
     description: 'Status of the tasks in your order (or one task by id): title, status, branch, PR and the result summary its agent wrote.',
     inputSchema: { type: 'object', properties: { task_id: { type: 'number' } } },
+  },
+  vault_search: {
+    description: 'Search the shared context vault: owner notes, decisions the crew recorded, uploaded specs and files. Use it before guessing about conventions, APIs, designs or earlier decisions. Returns ids, titles and snippets.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'A few keywords' } }, required: ['query'] },
+  },
+  vault_read: {
+    description: 'Read one vault entry in full by id (from vault_search or the list in your prompt). Binary files come back as a path to open with the Read tool.',
+    inputSchema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] },
+  },
+  vault_write: {
+    description: 'Record a decision or finding the rest of the crew should know later (an API shape, a naming rule, a gotcha you hit). Short and specific. Not for progress updates; use crew_post for those.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['title', 'body'] },
   },
 }
 
@@ -149,6 +163,14 @@ const CALLS = {
   crew_ask: ask,
   crew_read: read,
   crew_task_status: taskStatus,
+  vault_search: (ctx, { query }) => describeHits(searchVault(ctx.project_id, query)),
+  vault_read: (ctx, { id }) => readForAgent(ctx.project_id, id),
+  vault_write: (ctx, { title, body, tags }) => {
+    if (typeof title !== 'string' || !title.trim() || typeof body !== 'string' || !body.trim()) throw new Error('title and body are required')
+    const tagList = Array.isArray(tags) ? tags.filter(t => typeof t === 'string').slice(0, 8) : []
+    const r = addEntry(ctx.project_id, { kind: 'decision', title, body, tags: tagList, author_agent_id: ctx.agent_id })
+    return `Saved as vault #${r.id}.`
+  },
 }
 
 // Inbox "question:answer" for an item raised by an agent. True when it was such an item.

@@ -10,6 +10,7 @@ import AgentProfile from './screens/AgentProfile.jsx'
 import Inbox from './screens/Inbox.jsx'
 import Wall from './screens/Wall.jsx'
 import Home from './screens/Home.jsx'
+import Vault from './screens/Vault.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -19,7 +20,7 @@ const ICONS = {
 }
 const TABS = [['home', 'Home'], ['command', 'Command'], ['wall', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { inbox: 'home', team: 'wall', agent: 'wall' }
+const TAB_OF = { inbox: 'home', vault: 'home', team: 'wall', agent: 'wall' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -73,6 +74,7 @@ function Shell() {
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} />
   else if (view === 'wall') screen = <Wall {...ctx} />
+  else if (view === 'vault') screen = <Vault {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
   else screen = <Home {...ctx} />
 

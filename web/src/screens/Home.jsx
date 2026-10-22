@@ -89,6 +89,7 @@ export default function Home({ pid }) {
   return (
     <section className="office-home">
       <nav className="office-rail" aria-label="Crew setup">
+        <a className="rail-btn" href="#/vault" title="Shared context vault: notes, decisions, files agents can pull"><Glyph d="M4 5h16v14H4zM4 9h16M9 13h6" /><span>Vault</span></a>
         <a className="rail-btn" href="#/team" title="Team: add, clone and configure agents"><Glyph d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6" /><span>Team</span></a>
         <a className="rail-btn" href="#/board" title="Board"><Glyph d="M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z" /><span>Board</span></a>
         <a className="rail-btn" href="#/projects" title="Projects"><Glyph d="M3 7h7l2 2h9v10H3z" /><span>Projects</span></a>

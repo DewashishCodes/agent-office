@@ -153,6 +153,20 @@ CREATE TABLE IF NOT EXISTS crew_messages (
   delivered INTEGER NOT NULL DEFAULT 0,   -- 1 once it reached a live session or a task prompt
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS vault (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  kind TEXT NOT NULL,                     -- note (owner) | decision (agent or owner) | file (upload)
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',          -- the text; for a file its extracted text when it is text, else ''
+  file TEXT,                              -- stored name under data/vault/<project_id>/
+  mime TEXT,
+  size INTEGER,
+  tags TEXT NOT NULL DEFAULT '[]',        -- JSON strings
+  author_agent_id INTEGER,                -- null = the owner
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `)
 
 // CREATE TABLE IF NOT EXISTS never changes an existing table, so later columns are added here.
@@ -184,7 +198,7 @@ export const DEFAULT_SETTINGS = {
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().
-const JSON_COLS = ['settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub', 'pending_permission']
+const JSON_COLS = ['settings', 'owned_paths', 'readonly_paths', 'permissions', 'plan', 'acceptance', 'depends_on', 'files', 'sub', 'pending_permission', 'tags']
 
 function parse(r) {
   if (!r) return r

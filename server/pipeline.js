@@ -4,7 +4,7 @@ import { get, getProject, getTask, getAgent, activeAgents, setTask, log } from '
 import { runClaude } from './runner.js'
 import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
-import { CREW_TOOLS, mcpNames } from './crewmcp.js'
+import { CREW_TOOLS, VAULT_READ, mcpNames } from './crewmcp.js'
 import { parseVerdict } from './rules.js'
 
 const MAX_DIFF = 200_000
@@ -131,7 +131,7 @@ export async function checkTask(task_id) {
     const review = await step(t, project, {
       role: 'reviewer', kind: 'review', label: 'Review', system: SYSTEM_REVIEW,
       prompt: `${context}\n\n${diffBlock}\n\nReview it and end with the json verdict block.`,
-      tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read'], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
+      tools: ['Read', 'Grep', 'Glob'], mcp: ['crew_read', ...VAULT_READ], mode: 'dontAsk', disallowed: [], okWord: 'approve', badWord: 'changes', field: 'notes',
     })
     if (review === 'fail' || review === 'stop') return
     toQa()

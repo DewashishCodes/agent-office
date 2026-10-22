@@ -9,6 +9,7 @@ import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
+import { vaultDir, vaultIndex } from './vault.js'
 import { matchAgent, readyTasks, isAllowed, permissionPolicy, overlaps } from './rules.js'
 
 export { matchAgent, readyTasks, isAllowed }
@@ -20,7 +21,8 @@ export const denyRules = project => [...TASK_DISALLOWED, ...project.settings.pro
 
 // acceptEdits asks for anything outside the policy; autonomous agents keep the old bypass behavior.
 export const agentMode = agent => (agent.permissions?.autonomous ? 'bypassPermissions' : 'acceptEdits')
-export const policyFor = (project, agent, cwd) => (tool, input) => permissionPolicy(project.settings, agent, tool, input, cwd)
+export const policyFor = (project, agent, cwd) => (tool, input) =>
+  permissionPolicy({ ...project.settings, read_roots: [vaultDir(project.id)] }, agent, tool, input, cwd)
 export const MAX_ATTEMPTS = 2
 
 const pexec = promisify(execFile)
@@ -91,11 +93,13 @@ async function taskPrompt(t, a) {
   const notes = all('SELECT text FROM agent_notes WHERE agent_id = ? ORDER BY id', a.id).map(n => `- ${n.text}`).join('\n')
   const deps = t.depends_on.map(getTask).filter(Boolean)
   const messages = takeQueued(a.id)
+  const vault = vaultIndex(t.project_id)
   return [
     claude && `# CLAUDE.md\n\n${claude}`,
     playbook && `# .crew/PLAYBOOK.md\n\n${playbook}`,
     notes && `# Notes from the owner for you\n\n${notes}`,
     messages && `# Messages for you\n\n${messages}`,
+    vault && `# Shared context vault\n\nNotes, decisions and files the crew and the owner keep. Pull what this task needs with vault_read (by id) or vault_search; record decisions others need with vault_write.\n\n${vault}`,
     `# Your task: ${t.title}\n\n${t.description}`,
     `## Acceptance criteria\n\n${t.acceptance.map(c => `- ${c}`).join('\n') || '- (none given, use the description)'}`,
     t.files.length && `## Files you are expected to touch\n\n${t.files.join('\n')}`,

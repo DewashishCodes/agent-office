@@ -85,6 +85,8 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
     const p = input.file_path || input.notebook_path || input.path
     if (!p) return 'allow'
     const r = inside(cwd, p)
+    // Read-only roots outside the worktree, e.g. the shared vault's files.
+    if (r === null && ['Read', 'Glob', 'Grep', 'LS'].includes(tool) && (settings.read_roots || []).some(root => inside(root, p) !== null)) return 'allow'
     if (r === null) return 'ask'
     if (r && (settings.protected_paths || []).some(g => match(r, g))) return 'deny'
     return 'allow'

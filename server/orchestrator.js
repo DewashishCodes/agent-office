@@ -5,6 +5,9 @@ import { ensureClone, pullDefault, createIssue, prDiff } from './github.js'
 import { kick } from './scheduler.js'
 import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder } from './rules.js'
 
+// Named here, not imported from crewmcp.js, which imports this module.
+const ORCH_TOOLS = ['crew_post', 'crew_read', 'vault_search', 'vault_read', 'vault_write']
+
 export { parseReply }
 
 const MAX_DIFFS = 150_000
@@ -130,8 +133,8 @@ async function askNow(project_id, prompt, { kind = 'orchestrator' } = {}) {
   const base = {
     project_id, agent_id: orch?.id ?? null, kind, cwd: project.local_path, prompt: typeof prompt === 'function' ? prompt() : prompt,
     systemPrompt: SYSTEM_ORCH(orch, project, agents), model: orch?.model || 'opus', effort: orch?.effort || 'high',
-    allowedTools: ['Read', 'Grep', 'Glob', 'mcp__crew__crew_post', 'mcp__crew__crew_read'], permissionMode: 'dontAsk',
-    mcp: ['crew_post', 'crew_read'],
+    allowedTools: ['Read', 'Grep', 'Glob', ...ORCH_TOOLS.map(t => `mcp__crew__${t}`)], permissionMode: 'dontAsk',
+    mcp: ORCH_TOOLS,
   }
   return runClaude(base)
 }
