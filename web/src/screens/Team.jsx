@@ -28,7 +28,7 @@ export default function Team({ pid, floors, floor }) {
       <ErrorText error={error} />
       {agents?.length === 0 && <Empty>No agents. Add one from a template.</Empty>}
       <ul className="team">
-        {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} reload={reload} onQuick={() => setQuick(a.name)} />)}
+        {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} floors={floors} reload={reload} onQuick={() => setQuick(a.name)} />)}
       </ul>
       {adding && <AddAgent pid={pid} floors={floors} floor={floor} onClose={() => setAdding(false)} />}
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
@@ -36,7 +36,7 @@ export default function Team({ pid, floors, floor }) {
   )
 }
 
-function AgentCard({ a, lastEvent, reload, onQuick }) {
+function AgentCard({ a, floors, lastEvent, reload, onQuick }) {
   const [run, busy, error] = useAction()
   const post = (path, method = 'POST') => run(async () => { await api(`/agents/${a.id}${path}`, { method }); reload() })
   return (
