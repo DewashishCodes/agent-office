@@ -99,17 +99,29 @@ ${lines.join('\n')}`
 }
 
 const lead = (agents, floor) => agents.find(a => a.role === 'orchestrator' && a.floor === floor)
-const say = (project_id, floor, role, text, order_id = null) => addMessage(project_id, role, text, order_id, { floor })
+// A message lands in the chat its order was made in, else the floor's latest chat.
+const say = (project_id, floor, role, text, order_id = null, chat_id = chatFor(project_id, floor, order_id)) =>
+  addMessage(project_id, role, text, order_id, { floor, chat_id })
+
+export function newChat(project_id, floor, text) {
+  const id = insert('chats', { project_id, floor, title: String(text).replace(/\s+/g, ' ').trim().slice(0, 60) || 'New chat' })
+  emit('chat', project_id, get('SELECT * FROM chats WHERE id = ?', id))
+  return id
+}
+
+export const chatFor = (project_id, floor, order_id) => (order_id && getOrder(order_id)?.chat_id) ||
+  get('SELECT id FROM chats WHERE project_id = ? AND floor = ? ORDER BY updated_at DESC, id DESC LIMIT 1', project_id, floor)?.id ||
+  newChat(project_id, floor, 'Crew')
 
 // Every request is a fresh session: resuming one ever-growing chat re-read its whole history on each call and cost
-// more than the work it planned. The recent chat and finished orders come in the prompt instead.
-function withChat(project_id, floor, before_id, text) {
-  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ? AND floor = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, 'command', floor, before_id)
+// more than the work it planned. The recent messages of this chat and finished orders come in the prompt instead.
+function withChat(project_id, floor, chat_id, before_id, text) {
+  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE chat_id = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', chat_id, before_id)
   const done = all(`SELECT id, text, plan, status FROM orders WHERE project_id = ? AND floor = ? AND status IN ('done', 'ready_to_merge') ORDER BY id DESC LIMIT 5`, project_id, floor)
   const who = { user: 'Owner', orchestrator: 'You', system: 'Crew' }
   return [
     done.length && `# Recently finished orders\n\n${done.map(o => `- #${o.id} ${o.plan?.summary || o.text} (${o.status})`).join('\n')}`,
-    msgs.length && `# Recent chat (for context; it may be about other things)\n\n${msgs.map(m => `${who[m.role] || m.role}: ${m.text.slice(0, 800)}${m.order_id ? ` [plan for order #${m.order_id}]` : ''}`).join('\n\n')}`,
+    msgs.length && `# Earlier in this chat\n\n${msgs.map(m => `${who[m.role] || m.role}: ${m.text.slice(0, 800)}${m.order_id ? ` [plan for order #${m.order_id}]` : ''}`).join('\n\n')}`,
     `# The owner now says\n\n${text}`,
   ].filter(Boolean).join('\n\n')
 }
@@ -132,7 +144,7 @@ export async function askFromAgent(project_id, agent, task, question, floor = ag
   const plan = task && getOrder(task.order_id)?.plan
   const r = await ask(project_id, floor, `[Not the owner: ${agent?.name || 'an agent'} (${agent?.role || 'agent'}) asks${about}. Answer the agent directly, briefly, in plain text. No plan and no json block.]${plan ? `\n\nThe plan this task belongs to:\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`` : ''}\n\n${question}`)
   const answer = r.ok ? parseReply(r.text).text || '(no answer)' : `The Orchestrator could not answer: ${String(r.text).slice(0, 500)}`
-  say(project_id, floor, 'system', `${agent?.name || 'An agent'} asked the lead${about}: ${question}\n\nAnswer: ${answer}`)
+  say(project_id, floor, 'system', `${agent?.name || 'An agent'} asked the lead${about}: ${question}\n\nAnswer: ${answer}`, null, chatFor(project_id, floor, task?.order_id))
   return answer
 }
 
@@ -168,31 +180,31 @@ function offerPlan(project_id, order_id, plan) {
   })
 }
 
-// role 'system' marks an order handed over by another floor's lead rather than typed by the owner.
-export async function chat(project_id, text, floor = 'tech', role = 'user') {
-  const msg_id = say(project_id, floor, role, text)
-  if (waiting.get(`${project_id}:${floor}`) > 0) say(project_id, floor, 'orchestrator', 'Queued: I will get to this right after the current request.')
-  else if (ORDER_WORDS.test(text)) say(project_id, floor, 'orchestrator', 'Got it, looking at the repo.')
+// role 'system' marks an order handed over by another floor's lead rather than typed by the owner. No chat_id starts a new chat.
+export async function chat(project_id, text, floor = 'tech', role = 'user', chat_id = newChat(project_id, floor, text)) {
+  const msg_id = say(project_id, floor, role, text, null, chat_id)
+  if (waiting.get(`${project_id}:${floor}`) > 0) say(project_id, floor, 'orchestrator', 'Queued: I will get to this right after the current request.', null, chat_id)
+  else if (ORDER_WORDS.test(text)) say(project_id, floor, 'orchestrator', 'Got it, looking at the repo.', null, chat_id)
   try {
-    const r = await ask(project_id, floor, () => withChat(project_id, floor, msg_id, text))
+    const r = await ask(project_id, floor, () => withChat(project_id, floor, chat_id, msg_id, text))
     if (!r.ok) throw new Error(r.text || 'session failed')
     const { text: reply, plan } = parseReply(r.text)
-    if (!plan?.tasks.length) return void say(project_id, floor, 'orchestrator', reply || '(no answer)')
-    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan, floor })
+    if (!plan?.tasks.length) return void say(project_id, floor, 'orchestrator', reply || '(no answer)', null, chat_id)
+    const order_id = insert('orders', { project_id, text, status: 'awaiting_approval', plan, floor, chat_id })
     emit('order', project_id, getOrder(order_id))
     say(project_id, floor, 'orchestrator', reply || plan.summary || 'Here is the plan.', order_id)
     log(project_id, 'plan', `Plan proposed: ${plan.summary || text} (${plan.tasks.length} tasks)`, { order_id })
     await offerPlan(project_id, order_id, plan)
   } catch (e) {
     log(project_id, 'error', `Orchestrator failed: ${e.message}`)
-    say(project_id, floor, 'orchestrator', `Sorry, that failed: ${e.message.slice(0, 500)}`)
+    say(project_id, floor, 'orchestrator', `Sorry, that failed: ${e.message.slice(0, 500)}`, null, chat_id)
   }
 }
 
 export async function revisePlan(order_id, feedback) {
   const order = getOrder(order_id), pid = order.project_id, floor = order.floor
   if (order.status !== 'awaiting_approval') throw new Error(`Order is ${order.status}, not awaiting approval`)
-  say(pid, floor, 'user', `Revise the plan: ${feedback}`)
+  say(pid, floor, 'user', `Revise the plan: ${feedback}`, null, chatFor(pid, floor, order_id))
   setOrder(order_id, { status: 'planning' })
   try {
     const r = await ask(pid, floor, `Revise the plan for this order: "${order.text}"
@@ -328,7 +340,7 @@ Use "verdict": "problems" and explain in notes when something does not fit.`, { 
     notes = `Integration check failed: ${e.message}`
     log(pid, 'error', notes, { order_id })
   }
-  say(pid, order.floor, 'orchestrator', `All tasks for "${order.plan?.summary || order.text}" are done and ready to merge.\n\n${notes}`)
+  say(pid, order.floor, 'orchestrator', `All tasks for "${order.plan?.summary || order.text}" are done and ready to merge.\n\n${notes}`, null, chatFor(pid, order.floor, order_id))
   for (const [n, t] of tasks.filter(t => t.pr_number && !t.merged).entries()) {
     addInbox(pid, 'merge', `Merge PR #${t.pr_number}: ${t.title}`, { body: `Merge order ${n + 1}. ${notes}`, link: t.pr_url, order_id, task_id: t.id })
   }
