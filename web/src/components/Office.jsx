@@ -69,6 +69,10 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
         <span key={f.id} className="note-flight" aria-hidden="true"
           style={{ left: f.a.x, top: f.a.y, '--dx': `${f.b.x - f.a.x}px`, '--dy': `${f.b.y - f.a.y}px`, animationDuration: `${FLIGHT_MS}ms` }} />
       ))}
+      <div className="comms-head">
+        <img className="clawd sm" src={clawdUrl('pass-note')} alt="" width="96" height="32" draggable="false" />
+        <h3>Crew comms</h3>
+      </div>
       <CrewThread crew={crew} />
     </div>
   )

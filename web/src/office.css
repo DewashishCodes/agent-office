@@ -110,3 +110,5 @@
   .office-orders { order: 1; }
   .office-kanban { order: 2; }
 }
+.comms-head { display: flex; align-items: center; gap: 8px; }
+.clawd.sm { width: 96px; height: 32px; image-rendering: pixelated; }
