@@ -6,6 +6,7 @@ import { Tile } from './Wall.jsx'
 import Office, { CrewThread } from '../components/Office.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import Settings from '../components/Settings.jsx'
+import { SupportThread, ServiceChips, ServicesSheetBody } from '../components/Support.jsx'
 import '../office.css'
 
 // Three boxes, as sketched: waiting, being built, being checked. Done is a count in the header.
@@ -30,13 +31,14 @@ export default function Home({ pid, project, reloadProject }) {
   const [wall, , wallError] = useData(`/projects/${pid}/wall`, ev => ev.project_id === pid &&
     (['agent', 'order', 'task', 'crew_message'].includes(ev.type) || (ev.type === 'run' && ev.data.status !== 'running')))
   const [tasks] = useData(`/projects/${pid}/tasks`, on(pid, 'task'))
+  const [services] = useData(`/projects/${pid}/services`, on(pid, 'service'))
   // Live run rows straight from run events, so a busy agent does not refetch the wall every second.
   const [live, setLive] = useState({})
   useEvents(ev => {
     if (ev.type === 'run' && ev.project_id === pid && ev.data.agent_id) setLive(l => ({ ...l, [ev.data.agent_id]: ev.data }))
   })
   const [selected, setSelected] = useState(null)
-  const [sheet, setSheet] = useState(null)   // 'settings' | 'comms' | 'needs'
+  const [sheet, setSheet] = useState(null)   // 'settings' | 'comms' | 'needs' | 'services'
   const [quick, setQuick] = useState(null)
 
   const agents = (wall?.agents || []).map(a => {
@@ -45,8 +47,9 @@ export default function Home({ pid, project, reloadProject }) {
     const run = l && (!a.run || l.id >= a.run.id) ? { ...(a.run?.id === l.id ? a.run : {}), ...l } : a.run
     return { ...a, run }
   })
-  // Desktop always shows a terminal: the picked agent, else whoever is busy.
-  const pick = agents.find(a => a.id === selected) || (wide ? agents.find(a => a.run?.status === 'running') || agents[0] : null)
+  // Nothing picked: whoever is busy, else whoever ran last, so the pane does not jump away when a run ends.
+  const latest = agents.filter(a => a.run).sort((x, y) => y.run.id - x.run.id)[0]
+  const pick = agents.find(a => a.id === selected) || (wide ? agents.find(a => a.run?.status === 'running') || latest || agents[0] : null)
   const pane = pick && <Tile a={pick} expanded onQuick={() => setQuick(pick.name)} />
   const close = () => setSheet(null)
 
@@ -55,7 +58,7 @@ export default function Home({ pid, project, reloadProject }) {
       <section className="hq-space" aria-label="Agent space">
         <ErrorText error={wallError} />
         {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected}
-          inboxCount={items?.length || 0} onComms={() => setSheet('comms')} />}
+          inboxCount={items?.length || 0} onComms={() => setSheet('comms')} services={services} onServices={() => setSheet('services')} />}
       </section>
 
       {wide && <section className="hq-term" aria-label="Terminal">{pane || <Empty>No agents yet.</Empty>}</section>}
@@ -72,11 +75,13 @@ export default function Home({ pid, project, reloadProject }) {
       </section>
 
       <section className="hq-orders" aria-label="Orders">
-        <Orders pid={pid} orders={wall?.orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')} />
+        <Orders pid={pid} orders={wall?.orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
+          support={agents.find(a => a.role === 'support')} services={services} onServices={() => setSheet('services')} />
       </section>
 
       {!wide && pick && <Sheet title={pick.name} onClose={() => setSelected(null)}>{pane}</Sheet>}
       {sheet === 'settings' && project && <Settings project={project} reload={reloadProject} onClose={close} />}
+      {sheet === 'services' && <Sheet title="Services" onClose={close}><ServicesSheetBody pid={pid} /></Sheet>}
       {sheet === 'comms' && <Sheet title="Crew comms" onClose={close}><CrewThread crew={wall?.crew} /></Sheet>}
       {sheet === 'needs' && (
         <Sheet title="Needs you" onClose={close}>
@@ -125,52 +130,72 @@ function Kanban({ tasks, orders }) {
   })
 }
 
-function Orders({ pid, orders, needs, onNeeds }) {
+// The order section has two modes: orders for the build team, and Support for chores (no plan, no PR).
+function Orders({ pid, orders, needs, onNeeds, support, services, onServices }) {
+  const [mode, setMode] = useState(() => { try { return localStorage.getItem('crew.bar') === 'support' ? 'support' : 'order' } catch { return 'order' } })
+  const pickMode = m => { setMode(m); setSent(false); try { localStorage.setItem('crew.bar', m) } catch {} }
   const [text, setText] = useState('')
   const [sent, setSent] = useState(false)
   const [run, busy, error] = useAction()
   const send = e => {
     e.preventDefault()
     const t = text.trim()
-    if (t) run(async () => { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } }); setText(''); setSent(true) })
+    if (!t) return
+    run(async () => {
+      if (mode === 'support') await api(`/projects/${pid}/support`, { method: 'POST', body: { text: t } })
+      else { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } }); setSent(true) }
+      setText('')
+    })
   }
   const approve = id => run(() => api(`/orders/${id}/approve`, { method: 'POST', body: {} }))
   const cancel = id => run(() => api(`/orders/${id}/cancel`, { method: 'POST' }))
   return (
     <>
       <div className="orders-head">
-        <h2>Orders</h2>
+        <div className="mode" role="tablist" aria-label="Who gets your message">
+          <button type="button" role="tab" aria-selected={mode === 'order'} onClick={() => pickMode('order')}>Orders</button>
+          <button type="button" role="tab" aria-selected={mode === 'support'} onClick={() => pickMode('support')}>Support</button>
+        </div>
+        <span className="grow" />
         <button type="button" className={`needs-btn ${needs ? '' : 'calm'}`} onClick={onNeeds}>{needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'All clear'}</button>
       </div>
-      <ul className="order-list">
-        {orders?.length ? orders.map(o => {
-          const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
-          const done = o.counts.done || 0
-          return (
-            <li key={o.id} className="order-line">
-              <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
-              {o.status === 'awaiting_approval' ? (
-                <span className="row">
-                  <a className="small" href="#/command">Plan</a>
-                  <Button small variant="primary" disabled={busy} onClick={() => approve(o.id)}>Approve</Button>
-                </span>
-              ) : total > 0
-                ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
-                : <Badge status={o.status} />}
-              <More label={`Actions for ${o.plan?.summary || o.text}`}>
-                <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
-                <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
-              </More>
-            </li>
-          )
-        }) : <li className="lane-empty">No open orders</li>}
-      </ul>
-      <form className="order-bar" onSubmit={send}>
-        <label className="sr-only" htmlFor="hq-order">New order for the Orchestrator</label>
-        <input id="hq-order" value={text} onChange={e => { setText(e.target.value); setSent(false) }} placeholder="Give the crew an order..." />
-        <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Send</Button>
+      {mode === 'support' ? (
+        <>
+          <SupportThread pid={pid} support={support} onSentToTeam={() => { pickMode('order'); setSent(true) }} />
+          <ServiceChips services={services} onOpen={onServices} />
+        </>
+      ) : (
+        <ul className="order-list">
+          {orders?.length ? orders.map(o => {
+            const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
+            const done = o.counts.done || 0
+            return (
+              <li key={o.id} className="order-line">
+                <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
+                {o.status === 'awaiting_approval' ? (
+                  <span className="row">
+                    <a className="small" href="#/command">Plan</a>
+                    <Button small variant="primary" disabled={busy} onClick={() => approve(o.id)}>Approve</Button>
+                  </span>
+                ) : total > 0
+                  ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
+                  : <Badge status={o.status} />}
+                <More label={`Actions for ${o.plan?.summary || o.text}`}>
+                  <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
+                  <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
+                </More>
+              </li>
+            )
+          }) : <li className="lane-empty">No open orders</li>}
+        </ul>
+      )}
+      <form className={`order-bar ${mode}`} onSubmit={send}>
+        <label className="sr-only" htmlFor="hq-order">{mode === 'support' ? 'Ask Support' : 'New order for the Orchestrator'}</label>
+        <input id="hq-order" value={text} onChange={e => { setText(e.target.value); setSent(false) }}
+          placeholder={mode === 'support' ? 'Ask Support: start the server, run the tests, query the db...' : 'Give the crew an order...'} />
+        <Button type="submit" variant="primary" disabled={busy || !text.trim()}>{mode === 'support' ? 'Ask' : 'Send'}</Button>
       </form>
-      {sent && <p className="small muted">Sent. The plan comes back on <a href="#/command">Command</a>.</p>}
+      {sent && mode === 'order' && <p className="small muted">Sent. The plan comes back on <a href="#/command">Command</a>.</p>}
       <ErrorText error={error} />
     </>
   )

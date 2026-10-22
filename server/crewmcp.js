@@ -3,6 +3,10 @@ import { emit } from './bus.js'
 import { runForToken, sendToRun, canDeliver } from './runner.js'
 import { askFromAgent } from './orchestrator.js'
 import { searchVault, describeHits, readForAgent, addEntry } from './vault.js'
+import { startService, stopService, listServices, serviceText } from './services.js'
+import { suggestOrder } from './support.js'
+
+const serviceRow = id => get('SELECT * FROM services WHERE id = ?', id)
 
 // Crew tools over MCP streamable HTTP: POST JSON-RPC in, application/json out. Only what Claude Code calls is implemented.
 
@@ -36,6 +40,26 @@ const TOOLS = {
   vault_read: {
     description: 'Read one vault entry in full by id (from vault_search or the list in your prompt). Binary files come back as a path to open with the Read tool.',
     inputSchema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] },
+  },
+  service_start: {
+    description: 'Start a long-running process (dev server, watcher) that keeps running after your session ends. One plain command such as "npm run dev" or "node server.js". Returns the URL once it prints one.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Short name, e.g. "web" or "api"' }, command: { type: 'string' } }, required: ['name', 'command'] },
+  },
+  service_stop: {
+    description: 'Stop a running service by name.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+  },
+  service_list: {
+    description: 'Services of this project: name, command, status, URL.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  service_logs: {
+    description: 'The last lines a service printed (plain text). Use it to check that a server came up or to find an error.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, lines: { type: 'number' } }, required: ['name'] },
+  },
+  suggest_order: {
+    description: 'When a request needs a code change, hand it to the build team: write a clear, self-contained order. The owner gets a button to send it; nothing happens without them.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
   },
   vault_write: {
     description: 'Record a decision or finding the rest of the crew should know later (an API shape, a naming rule, a gotcha you hit). Short and specific. Not for progress updates; use crew_post for those.',
@@ -163,6 +187,30 @@ const CALLS = {
   crew_ask: ask,
   crew_read: read,
   crew_task_status: taskStatus,
+  service_start: async (ctx, { name, command }) => {
+    const { service: s, already } = startService(ctx.project_id, { name, command })
+    if (already) return `"${s.name}" is already running (${s.command})${s.url ? ` at ${s.url}` : ''}.`
+    // Most dev servers print their URL within a few seconds; report it if it shows up.
+    for (let i = 0; i < 16 && !serviceRow(s.id)?.url && serviceRow(s.id)?.status === 'running'; i++) await timeout(500)
+    const now = serviceRow(s.id)
+    if (now.status !== 'running') return `"${s.name}" exited right away (code ${now.exit_code}). Last output:\n${serviceText(s.id, 30)}`
+    return `Started "${s.name}"${now.url ? ` at ${now.url}` : ' (no URL printed yet; check service_logs)'}.`
+  },
+  service_stop: (ctx, { name }) => {
+    const s = get(`SELECT * FROM services WHERE project_id = ? AND name = ? AND status = 'running'`, ctx.project_id, String(name))
+    if (!s) return `No running service named "${name}".`
+    stopService(s.id)
+    return `Stopping "${s.name}".`
+  },
+  service_list: ctx => {
+    const rows = listServices(ctx.project_id)
+    return rows.length ? rows.map(s => `${s.name}: ${s.status}${s.url ? ` ${s.url}` : ''} (${s.command})`).join('\n') : 'No services.'
+  },
+  service_logs: (ctx, { name, lines = 60 }) => {
+    const s = get('SELECT * FROM services WHERE project_id = ? AND name = ? ORDER BY id DESC', ctx.project_id, String(name))
+    return s ? serviceText(s.id, Number(lines) || 60) || '(no output yet)' : `No service named "${name}".`
+  },
+  suggest_order: (ctx, { text }) => suggestOrder(ctx, text),
   vault_search: (ctx, { query }) => describeHits(searchVault(ctx.project_id, query)),
   vault_read: (ctx, { id }) => readForAgent(ctx.project_id, id),
   vault_write: (ctx, { title, body, tags }) => {

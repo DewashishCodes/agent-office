@@ -11,7 +11,7 @@ const live = new Map()
 // MCP and hook run token -> run_id; dies with the run.
 const tokens = new Map()
 
-const AGENT_KINDS = ['task', 'review', 'qa']
+const AGENT_KINDS = ['task', 'review', 'qa', 'support']
 const IDLE_MS = 10 * 60 * 1000
 const MAX_STR = 4000
 const PTY_DIR = join(DATA_DIR, 'pty')
@@ -24,9 +24,13 @@ const MARKERS = /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|SESSION_ID|ENTRYPOINT|E
 // The fake CLI in tests only speaks stream-json.
 const usePty = kind => AGENT_KINDS.includes(kind) && process.env.CREW_TERMINAL !== 'json' && !process.env.CREW_CLAUDE_BIN
 
-function childEnv() {
+// The crew server's own settings stay with it: an agent could read OWNER_TOKEN with env, and a dev server started for the
+// owner would bind the crew's PORT. The process env snapshot taken here is from before .env, so .env keys are dropped too.
+const OWN = /^(OWNER_TOKEN|PORT|CREW_[A-Z0-9_]+)$/
+
+export function childEnv() {
   const env = { ...process.env, MCP_TOOL_TIMEOUT: String(60 * 60 * 1000) }
-  for (const k of Object.keys(env)) if (MARKERS.test(k)) delete env[k]
+  for (const k of Object.keys(env)) if (MARKERS.test(k) || OWN.test(k)) delete env[k]
   return env
 }
 
@@ -266,7 +270,7 @@ function spawnChild(e, text, resume) {
   userMsg(e, text)
 }
 
-function killChild(child) {
+export function killChild(child) {
   if (!child) return
   if (process.platform === 'win32') execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], () => {})
   else child.kill('SIGKILL')

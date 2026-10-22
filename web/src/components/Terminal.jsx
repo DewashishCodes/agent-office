@@ -18,10 +18,14 @@ const CELL = 0.6
 export default function Terminal({ run, drive = false, interactive = false, className = '' }) {
   if (!run) return <div className={`terminal empty-t ${className}`}>No runs yet</div>
   if (!run.terminal) return <Transcript runId={run.id} tail={drive ? 500 : 40} className={`${className} ${drive ? 'tall' : ''}`} />
-  return <Live key={run.id} id={run.id} drive={drive} interactive={interactive} className={className} />
+  return <Live key={run.id} id={run.id} src={`/api/runs/${run.id}/pty`} drive={drive} interactive={interactive} className={className} />
 }
 
-function Live({ id, drive, interactive, className }) {
+// A service's output (dev server, watcher): the same terminal, read only, never resizing the process.
+export const ServiceLog = ({ service, className = '' }) =>
+  <Live key={`s${service.id}`} id={null} src={`/api/services/${service.id}/log`} drive={false} interactive={false} className={className} />
+
+function Live({ id, src, drive, interactive, className }) {
   const box = useRef()
   const term = useRef()
   const keys = useRef(interactive)
@@ -38,6 +42,8 @@ function Live({ id, drive, interactive, className }) {
     // Watchers keep the agent's columns so lines wrap where the agent sees them wrap.
     const follow = () => {
       if (drive || !box.current) return
+      // A service log (no run id) is plain output: it wraps to the box at a readable size.
+      if (!id) { try { fit.fit() } catch {} return }
       const w = box.current.clientWidth - 8
       t.options.fontSize = Math.max(6, Math.min(13, Math.floor(w / size.cols / CELL)))
       t.resize(size.cols, Math.max(5, Math.min(size.rows, Math.floor(box.current.clientHeight / (t.options.fontSize * 1.2)))))
@@ -56,7 +62,7 @@ function Live({ id, drive, interactive, className }) {
     const ro = new ResizeObserver(resize)
     ro.observe(box.current)
 
-    const es = new EventSource(`/api/runs/${id}/pty`)
+    const es = new EventSource(src)
     // A reconnect replays the whole buffer, so start from a clean screen.
     es.onopen = () => t.reset()
     es.onmessage = m => {
@@ -81,7 +87,7 @@ function Live({ id, drive, interactive, className }) {
     })
     resize()
     return () => { es.close(); ro.disconnect(); input.dispose(); clearTimeout(timer); t.dispose() }
-  }, [id, drive])
+  }, [src, id, drive])
 
   useEffect(() => {
     const t = term.current

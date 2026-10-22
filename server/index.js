@@ -15,6 +15,8 @@ import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
 import { matchAgent } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
+import { askSupport, ensureSupport } from './support.js'
+import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
 
 if (!process.env.OWNER_TOKEN) {
   console.error('OWNER_TOKEN is not set. Put OWNER_TOKEN=<long random string> in .env and restart.')
@@ -187,7 +189,7 @@ app.post('/api/projects/:id/resume', (req, res) => {
 // Chat and orders
 
 app.get('/api/projects/:id/messages', (req, res) => {
-  res.json(all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT 200) ORDER BY id', project(req).id))
+  res.json(all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ? ORDER BY id DESC LIMIT 200) ORDER BY id', project(req).id, req.query.channel === 'support' ? 'support' : 'command'))
 })
 
 app.post('/api/projects/:id/messages', (req, res) => {
@@ -382,6 +384,39 @@ app.post('/api/runs/:id/permission', (req, res) => {
   const { request_id, allow, message } = req.body ?? {}
   answerPermission(runRow(req).id, str(request_id, 'request_id'), allow === true, { message: typeof message === 'string' ? message : undefined })
   res.json({ ok: true })
+})
+
+// Support desk and its services
+
+app.post('/api/projects/:id/support', (req, res) => {
+  const p = project(req), { text, model } = req.body ?? {}
+  if (model !== undefined && !['haiku', 'sonnet', 'opus'].includes(model)) throw fail(400, 'model must be haiku, sonnet or opus')
+  background(p.id, askSupport(p.id, str(text, 'text'), { model }))
+  res.status(202).json({ ok: true })
+})
+
+app.get('/api/projects/:id/services', (req, res) => res.json(listServices(project(req).id)))
+
+const service = req => found(get('SELECT * FROM services WHERE id = ?', int(req.params.id)), 'service')
+
+app.post('/api/services/:id/stop', (req, res) => res.json(stopService(service(req).id)))
+app.post('/api/services/:id/restart', async (req, res) => res.json(await restartService(service(req).id)))
+app.delete('/api/services/:id', (req, res) => {
+  try { removeService(service(req).id) } catch (e) { throw fail(409, e.message) }
+  res.json({ ok: true })
+})
+
+// Service output as SSE, same shape as a run's terminal.
+app.get('/api/services/:id/log', (req, res) => {
+  const s = service(req)
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+  res.flushHeaders()
+  const send = d => res.write(`data: ${JSON.stringify(d)}\n\n`)
+  const end = () => { res.write('event: end\ndata: {}\n\n'); res.end() }
+  const stop = watchService(s.id, d => d === null ? end() : send(d))
+  if (!stop) { send(serviceTail(s.id)); return end() }
+  const beat = setInterval(() => res.write(': ping\n\n'), 25000)
+  req.on('close', () => { clearInterval(beat); stop() })
 })
 
 // Vault
@@ -596,6 +631,10 @@ app.use((err, req, res, next) => {
 })
 
 if (import.meta.main) {
+  ensureSupport()
+  recoverServices()
+  process.on('exit', stopAllServices)
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0))
   initNotify()
   start()
   const port = process.env.PORT || 5190

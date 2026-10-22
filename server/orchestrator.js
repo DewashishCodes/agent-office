@@ -41,7 +41,8 @@ const EXAMPLE_PLAN = `{
   ]
 }`
 
-const roster = agents => agents.map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
+// Support is not part of the build team; it never gets planned tasks.
+const roster = agents => agents.filter(a => a.role !== 'support').map(a => `- ${a.name} (${a.role}${a.status === 'paused' ? ', paused' : ''}): ${a.specialty || 'no specialty'}. Owns: ${a.owned_paths.length ? a.owned_paths.join(', ') : 'nothing, never gets tasks'}`).join('\n')
 
 const SYSTEM_ORCH = (lead, project, agents) => `You are ${lead?.name || 'the Orchestrator'}, the lead of an AI dev crew working on the GitHub repo ${project.repo} (default branch ${project.default_branch}). Your working directory is a fresh clone of it. You can read code (Read, Grep, Glob) but you never edit files and never run commands.
 
@@ -92,7 +93,7 @@ const lead = agents => agents.find(a => a.role === 'orchestrator')
 // Every request is a fresh session: resuming one ever-growing chat re-read its whole history on each call and cost
 // more than the work it planned. The recent chat and finished orders come in the prompt instead.
 function withChat(project_id, before_id, text) {
-  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, before_id)
+  const msgs = all('SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ? AND id < ? ORDER BY id DESC LIMIT 12) ORDER BY id', project_id, 'command', before_id)
   const done = all(`SELECT id, text, plan, status FROM orders WHERE project_id = ? AND status IN ('done', 'ready_to_merge') ORDER BY id DESC LIMIT 5`, project_id)
   const who = { user: 'Owner', orchestrator: 'You', system: 'Crew' }
   return [

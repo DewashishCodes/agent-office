@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
-  role TEXT NOT NULL,                     -- user | orchestrator
+  role TEXT NOT NULL,                     -- user | orchestrator | system | support
   text TEXT NOT NULL,
   order_id INTEGER REFERENCES orders(id), -- set when the message carries a plan card
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -153,6 +153,17 @@ CREATE TABLE IF NOT EXISTS crew_messages (
   delivered INTEGER NOT NULL DEFAULT 0,   -- 1 once it reached a live session or a task prompt
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS services (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  name TEXT NOT NULL,
+  command TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running', -- running | stopped | exited
+  url TEXT,                               -- first local URL the process printed
+  exit_code INTEGER,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  ended_at TEXT
+);
 CREATE TABLE IF NOT EXISTS vault (
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -181,7 +192,9 @@ addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name th
 addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
 addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock
 addColumn('inbox', 'run_id', 'INTEGER')
-addColumn('inbox', 'ref', 'TEXT')                               // permission request_id
+addColumn('inbox', 'ref', 'TEXT')
+addColumn('messages', 'channel', "TEXT NOT NULL DEFAULT 'command'")  // command (Orchestrator) | support
+addColumn('messages', 'suggest', 'TEXT')                       // support: an order it suggests handing to the team                               // permission request_id
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
@@ -263,8 +276,8 @@ export function log(project_id, kind, text, extra = {}) {
   return id
 }
 
-export function addMessage(project_id, role, text, order_id = null) {
-  const id = insert('messages', { project_id, role, text, order_id })
+export function addMessage(project_id, role, text, order_id = null, extra = {}) {
+  const id = insert('messages', { project_id, role, text, order_id, ...extra })
   emit('message', project_id, get('SELECT * FROM messages WHERE id = ?', id))
   return id
 }

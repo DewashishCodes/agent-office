@@ -199,3 +199,37 @@
 /* An open row menu must not be clipped by the scrolling list. */
 .order-list:has(.more[open]) { overflow: visible; }
 .order-line .more .menu { right: 0; top: auto; bottom: calc(100% + 2px); z-index: 20; }
+
+/* Server rack on the wall: lit units are running services. */
+.rack { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; pointer-events: auto; }
+.rack-units { display: flex; flex-direction: column; gap: 2px; padding: 3px; background: #2b2724; border: 2px solid var(--ink); }
+.rack-units i { display: block; width: 26px; height: 5px; background: #3d3833; box-shadow: inset -6px 0 0 #2a2622; }
+.rack-units i.lit { background: #3d3833; box-shadow: inset -6px 0 0 #6bd46d, 0 0 4px rgb(107 212 109 / .5); }
+.rack.on .tag { border-color: #6bd46d; }
+.rack:hover .tag { border-color: #d97757; }
+
+/* Order section modes and the Support conversation. */
+.mode { display: inline-flex; padding: 2px; border-radius: 99px; background: var(--surface-2); }
+.mode button { min-height: 28px; padding: 0 12px; border: 0; border-radius: 99px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.mode button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+.order-bar.support .btn.primary { background: #d97757; border-color: #d97757; color: #1b1916; }
+.support-thread { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.sp { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 92%; }
+.sp.mine { align-self: flex-end; align-items: flex-end; }
+.sp-bubble { padding: 6px 10px; border-radius: 4px 12px 12px 12px; background: var(--surface-2); font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sp.mine .sp-bubble { border-radius: 12px 4px 12px 12px; background: var(--accent-soft); }
+.sp-bubble pre.code { max-height: 160px; }
+.sp-meta { display: flex; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.sp-suggest { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; padding: 8px 10px; border-radius: 10px; border: 1px dashed var(--accent); }
+.linkish { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: inherit; cursor: pointer; text-decoration: underline; }
+.svc-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
+.svc-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); }
+.svc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 5px var(--ok); }
+.svc-dot.stopped, .svc-dot.exited { background: var(--muted); box-shadow: none; }
+.svc-dot.exited { background: var(--err); }
+.svc-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
+.svc-row.on { border-color: var(--accent); }
+.svc-pick { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.svc-log { height: 320px; }
+/* Support replies need room to read: the bottom row grows while the bar is in Support mode. */
+@media (min-width: 900px) { .hq:has(.order-bar.support) { grid-template-rows: minmax(0, 1fr) 300px; } }

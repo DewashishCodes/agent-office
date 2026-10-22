@@ -20,7 +20,7 @@ function light(a) {
 
 // The agent space: a pixel office room. One desk per agent (its Clawd and monitor), the owner's mailbox by the door,
 // notes flying between desks as agents message each other. onSelect(agent_id) shows that agent's terminal.
-export default function Office({ pid, agents, crew, selected, onSelect, inboxCount = 0, onComms }) {
+export default function Office({ pid, agents, crew, selected, onSelect, inboxCount = 0, onComms, services = [], onServices }) {
   const room = useRef()
   const [flights, setFlights] = useState([])
   const [bubbles, setBubbles] = useState({})
@@ -37,6 +37,12 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
   }
 
   useEvents(ev => {
+    // Support answering the owner: a bubble over its desk.
+    if (ev.type === 'message' && ev.project_id === pid && ev.data.channel === 'support' && ev.data.role === 'support') {
+      const desk = agents.find(a => a.role === 'support')
+      if (desk) bubble(desk.id, { from: desk.name, text: ev.data.text })
+      return
+    }
     if (ev.type !== 'crew_message' || ev.project_id !== pid) return
     const m = ev.data
     const from = m.from_agent_id ?? 'owner'
@@ -67,6 +73,7 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
       <div className="room-wall">
         <span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" />
         <span className="sign" aria-hidden="true">CREW HQ</span>
+        <Rack services={services} onOpen={onServices} />
         <div className="mailbox" data-desk="owner" title="Your mail tray">
           <span className="sprite-box mail-sprite" aria-hidden="true"><span /></span>
           <span className="tag">You{inboxCount > 0 && <b className="tag-count">{inboxCount}</b>}</span>
@@ -89,6 +96,17 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
         <span className="ticker-more">Comms</span>
       </button>
     </div>
+  )
+}
+
+// A server rack on the wall: one lit unit per running service. Click for logs, stop and restart.
+function Rack({ services, onOpen }) {
+  const up = services.filter(s => s.status === 'running')
+  return (
+    <button type="button" className={`rack ${up.length ? 'on' : ''}`} onClick={onOpen} title={up.length ? up.map(s => `${s.name}${s.url ? ` ${s.url}` : ''}`).join(', ') : 'No services running'}>
+      <span className="rack-units" aria-hidden="true">{[0, 1, 2].map(i => <i key={i} className={i < up.length ? 'lit' : ''} />)}</span>
+      <span className="tag">{up.length ? `${up.length} up` : 'Services'}</span>
+    </button>
   )
 }
 

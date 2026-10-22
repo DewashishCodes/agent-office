@@ -22,6 +22,8 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 - `server/db.js` schema + helpers (node:sqlite, `data/crew.db`). Use `setTask/setAgent/setOrder/log/addInbox` so changes broadcast.
 - `server/bus.js` event bus; `index.js` forwards every event over SSE `/api/events`, the UI refetches on matching events.
 - `server/runner.js` two engines behind one API. Task, Reviewer and QA runs are real interactive `claude` in a pty (`@lydell/node-pty`): control through hooks that call `POST /hook/:token` via `server/hook.mjs` (PermissionRequest -> `rules.permissionPolicy` or the owner, Stop -> turn end and result text, UserPromptSubmit), status line -> cost and 5-hour limit, the session jsonl -> `run_events`, tokens, `last_event`. Prompts are pasted once the input box is drawn; Take over gives the owner the keyboard in the browser; output kept in `data/pty/run-<id>.log`. Orchestrator, onboarding, integrate (and everything when `CREW_TERMINAL=json` or under the fake CLI) stay on `claude -p` stream-json with `--permission-prompt-tool stdio`.
+- `server/support.js` the Support desk for chores (run, check, query, look things up): one resumed Haiku session per project in the main clone, no plan, worktree, PR or review. `rules.supportPolicy`: read-only commands and read-only SQL run, anything else asks, file edits and commits are denied. `suggest_order` lets it hand code changes to the team behind an owner button. Messages use `channel = 'support'`.
+- `server/services.js` long-running processes Support starts (`service_start`), owned by the crew server so they outlive the session: one pty each, log in `data/services/`, URL detection, stop and restart; stopped when the server exits.
 - `server/vault.js` shared context vault (notes, decisions, files under `data/vault/<project>/`, repo crew docs read live). Agents get titles in the prompt and the crew MCP tools vault_search, vault_read, vault_write.
 - `server/crewmcp.js` HTTP MCP server at `/mcp/:token` (one token per run): crew_post, crew_ask, crew_read, crew_task_status so agents message and ask each other, the Orchestrator or the owner.
 - `server/github.js` git and gh wrappers. Clone-level ops (clone, fetch, worktree add/remove, push) go through one serial queue; parallel agents raced on git lock files without it.
@@ -41,6 +43,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 ## Gotchas
 
+- Child processes (agents, services) get the env without OWNER_TOKEN, PORT and CREW_* (`runner.childEnv`): a dev server would otherwise bind the crew port, and agents could read the token.
 - Terminal runs need the native `claude.exe` on PATH (or `CREW_CLAUDE_PTY_BIN`). The child env drops the `CLAUDE_CODE_*` markers a parent session leaves, or the CLI stops saving its transcript (tokens and run_events would stay empty).
 - Task agents and QA run with `acceptEdits`: Bash outside the `auto_allow_bash` list and file access outside the worktree ask the owner (Inbox, Wall). Deny rules (`git push`, `gh`, `.env`, protected paths) apply in every mode. An agent marked autonomous goes back to `bypassPermissions`.
 - `npm test` uses `test/fake-claude.mjs` via `CREW_CLAUDE_BIN`; no real sessions in tests.

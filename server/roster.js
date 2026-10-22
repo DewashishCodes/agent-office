@@ -44,6 +44,13 @@ export const TEMPLATES = [
     model: 'sonnet', effort: 'medium', max_parallel: 2,
     permissions: { open_pr: false, comment: true, run_tests: true, merge: false },
   },
+  {
+    role: 'support', name: 'Support', specialty: 'Chores: run, check, query, look things up. No PRs.',
+    owned_paths: [], readonly_paths: ['**'],
+    instructions: '',
+    model: 'haiku', effort: 'low', max_parallel: 1,
+    permissions: { open_pr: false, comment: false, run_tests: true, merge: false },
+  },
 ]
 
 export const template = role => TEMPLATES.find(t => t.role === role)

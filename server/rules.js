@@ -92,20 +92,62 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
     return 'allow'
   }
   if (tool === 'Bash') {
-    const cmd = String(input.command || '').trim()
-    // Substitutions can hide any command inside an allowed one. Quoted heredocs ('EOF') and single quotes never expand.
-    const literal = cmd.replace(/<<-?\s*(['"])(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, '<<\n').replace(/'[^']*'/g, "''")
-    if (!cmd || /\$\(|`|<\(/.test(literal)) return 'ask'
-    // Heredoc bodies are data; quoted strings (commit messages, curl headers) keep their words but lose separators.
-    const bare = cmd.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(\n|$)/g, '<<\n')
-      .replace(/"(\\.|[^"\\])*"|'[^']*'/g, q => q.replace(/[;|&\n<>()]/g, ' '))
-    // find -exec/-delete and redirects out of the worktree turn a harmless prefix into anything.
-    if (/\s-(exec|execdir|delete|ok)\b/.test(bare) || /(^|[^0-9&])>+\s*(?!\/dev\/null|\/tmp\/)(\/|~|[A-Za-z]:|\.\.)/.test(bare)) return 'ask'
+    const parts = bashParts(input.command)
+    if (!parts) return 'ask'
     const ok = new RegExp(settings.auto_allow_bash)
-    // Split on && || ; | newlines and a lone & (not 2>&1); drop subshell parens and VAR=value prefixes.
-    const parts = bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
-      .map(s => s.trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').replace(/^(\w+=\S*\s+)+/, '').trim()).filter(Boolean)
     return parts.every(s => ok.test(s) || localCurl(s)) ? 'allow' : 'ask'
+  }
+  return 'ask'
+}
+
+// A Bash command as its simple parts, or null when it can hide another command (substitutions) or reach outside the
+// worktree (find -exec/-delete, redirects out of it). Quoted strings and heredoc bodies are data: they keep their words
+// but lose separators.
+function bashParts(command, { noRedirects = false } = {}) {
+  const cmd = String(command || '').trim()
+  // Substitutions can hide any command inside an allowed one. Quoted heredocs ('EOF') and single quotes never expand.
+  const literal = cmd.replace(/<<-?\s*(['"])(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, '<<\n').replace(/'[^']*'/g, "''")
+  if (!cmd || /\$\(|`|<\(/.test(literal)) return null
+  const bare = cmd.replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(\n|$)/g, '<<\n')
+    .replace(/"(\\.|[^"\\])*"|'[^']*'/g, q => q.replace(/[;|&\n<>()]/g, ' '))
+  if (/\s-(exec|execdir|delete|ok)\b/.test(bare) || /(^|[^0-9&])>+\s*(?!\/dev\/null|\/tmp\/)(\/|~|[A-Za-z]:|\.\.)/.test(bare)) return null
+  // Read-only callers: any write redirect (other than to /dev/null or 2>&1) is a write.
+  if (noRedirects && /(^|[^0-9&])>+(?!\s*\/dev\/null|&)/.test(bare)) return null
+  // Split on && || ; | newlines and a lone & (not 2>&1); drop subshell parens and VAR=value prefixes.
+  return bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
+    .map(s => s.trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').replace(/^(\w+=\S*\s+)+/, '').trim()).filter(Boolean)
+}
+
+// Commands Support may run without asking: they look, they never change anything.
+const LOOK = /^(git (status|diff|log|show|rev-parse|ls-files|blame|grep|describe)|git (branch|tag|remote)(\s+(-[avr]+|--list|-vv))*\s*$|ls|dir|cat|type|head|tail|wc|grep|rg|find|pwd|echo|which|where|date|whoami|uname|df|du|ps|tasklist|netstat|lsof|node (-v|--version)|python3? (-V|--version)|npm (-v|--version|ls|list|outdated|view|test|run (test|lint|check|typecheck|build))|pnpm (test|lint|ls)|yarn (test|lint)|npx (tsc --noEmit|eslint|vitest run|jest)|pytest|go (test|vet)|cargo (test|check))\b/
+const SQL_CLI = /^(sqlite3|psql|mysql|mariadb)\b/
+const SQL_WRITE = /\b(insert|update|delete|drop|alter|create|replace|truncate|attach|detach|vacuum|reindex|grant|revoke|copy|merge|upsert|call|do)\b|\bpragma\s+\w+\s*=|\.(read|import|output|once|save|restore|backup|shell|system|load)\b/i
+const SQL_READ = /^\s*(select|with|explain|show|describe|desc|pragma|\.tables|\.schema|\.indexes|\\d)/i
+
+// A database CLI call whose SQL only reads. No SQL in quotes (an interactive shell, a script file) is not a read.
+export function readOnlySql(part) {
+  if (!SQL_CLI.test(part)) return false
+  const sql = [...part.matchAll(/"((?:\\.|[^"\\])*)"|'([^']*)'/g)].map(m => m[1] ?? m[2]).filter(q => /\s/.test(q) || /^\./.test(q))
+  if (!sql.length || /(^|\s)(-f|--file|<)(\s|$)/.test(part)) return false
+  return sql.every(q => !SQL_WRITE.test(q) && q.split(';').map(x => x.trim()).filter(Boolean).every(x => SQL_READ.test(x)))
+}
+
+const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
+// Support: looking around and read-only queries run; anything that changes state asks the owner; code is never edited.
+export function supportPolicy(settings, tool, input = {}, cwd) {
+  if (tool.startsWith('mcp__crew__') || tool === 'TodoWrite') return 'allow'
+  if (WRITE_TOOLS.includes(tool)) return 'deny'
+  if (['Read', 'Glob', 'Grep', 'LS'].includes(tool)) {
+    const p = input.file_path || input.path
+    if (!p) return 'allow'
+    const r = inside(cwd, p)
+    if (r && (settings.protected_paths || []).some(g => match(r, g))) return 'deny'
+    return r === null ? 'ask' : 'allow'
+  }
+  if (tool === 'Bash') {
+    const parts = bashParts(input.command, { noRedirects: true })
+    if (!parts) return 'ask'
+    return parts.every(s => (LOOK.test(s) && !/^(find|rg|grep)\b.*\s-(delete|exec)/.test(s)) || localCurl(s) || readOnlySql(s)) ? 'allow' : 'ask'
   }
   return 'ask'
 }
