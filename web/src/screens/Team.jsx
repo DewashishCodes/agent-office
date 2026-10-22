@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
 import { Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
 import QuickTask from '../components/QuickTask.jsx'
+import ModelEffort from '../components/ModelEffort.jsx'
 
 const ROLES = ['custom', 'frontend', 'backend', 'planner', 'reviewer', 'qa']
 
@@ -53,6 +54,7 @@ function AgentCard({ a, floors, lastEvent, reload, onQuick }) {
         {a.current_task ? <span>On: {a.current_task}</span> : <span className="muted">{a.status === 'paused' ? 'Paused' : 'No current task'}</span>}
         {lastEvent && <span className="mono muted live">{lastEvent}</span>}
       </div>
+      <ModelEffort a={a} onSaved={reload} />
       <div className="actions">
         {a.owned_paths?.length > 0 && <Button small onClick={onQuick}>Quick task</Button>}
         {a.status === 'paused'

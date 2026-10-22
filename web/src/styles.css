@@ -370,3 +370,8 @@ h1 .count { vertical-align: middle; }
 /* An agent working on a reply: its Clawd, what it does, how long. */
 .working { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 4px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
 .working img { flex: 0 0 auto; image-rendering: pixelated; }
+
+/* Model and effort picker: the Clawd gauge shows the effort, model-switch plays after a model change. */
+.model-effort { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
+.model-effort img { height: 40px; image-rendering: pixelated; align-self: center; }
+.model-effort .error { grid-column: 1 / -1; }
