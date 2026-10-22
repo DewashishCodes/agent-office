@@ -215,6 +215,7 @@ addColumn('projects', 'proposal', 'TEXT')                       // JSON office p
 addColumn('projects', 'rerun', 'INTEGER NOT NULL DEFAULT 0')    // 1 while a re-run of onboarding is in progress
 addColumn('messages', 'chat_id', 'INTEGER')                     // command messages only
 addColumn('orders', 'chat_id', 'INTEGER')                       // the chat the plan was made in
+addColumn('orders', 'hotfix', 'INTEGER NOT NULL DEFAULT 0')     // 1 = tasks push straight to the project branch, no PR, review or QA
 
 // Command history from before chats becomes one "Earlier chat" per floor.
 for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, floor, MIN(created_at) first, MAX(created_at) last FROM messages

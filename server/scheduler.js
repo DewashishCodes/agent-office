@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
 import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, closePR, mergePR, restack } from './github.js'
+import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -172,6 +172,15 @@ async function runTask(task_id) {
 
   // Canceled while the run was wrapping up: no PR, no review.
   if (getTask(task_id).status === 'canceled') return
+  if (getOrder(t.order_id)?.hotfix) {
+    // Never forced: a protected branch or one that moved mid-push fails the task to the Inbox instead.
+    t = setTask(task_id, { base_sha: await rebaseOnto(wt.path, base_sha, branch, project.default_branch) })
+    await pushTo(wt.path, `${branch}:refs/heads/${project.default_branch}`)
+    t = setTask(task_id, { status: 'done' })
+    issueStatus(project, t, 'done')
+    log(project.id, 'hotfix', `${agent.name} pushed hotfix "${t.title}" straight to ${project.default_branch}`, { task_id, agent_id: agent.id, order_id: t.order_id })
+    return markMerged(task_id)
+  }
   await pushBranch(wt.path, branch)
   if (!t.pr_number) {
     const pr = await createPR(project, { branch, title: t.title, body: prBody(t) })
@@ -320,7 +329,7 @@ export function markMerged(task_id) {
   const t = getTask(task_id)
   if (t.merged) return
   setTask(t.id, { merged: 1 })
-  log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
+  if (t.pr_number) log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
   const left = get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0 AND status != 'canceled'`, t.order_id).n
   if (!left && !['done', 'canceled'].includes(getOrder(t.order_id).status)) {
