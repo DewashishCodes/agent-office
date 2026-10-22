@@ -291,6 +291,8 @@ function spawnPty(e, text, resume) {
   e.cost_done += e.cost_now
   e.cost_now = 0
   e.ready = false
+  e.trusted = false
+  e.head = ''
   e.queue = text ? [text] : []
   // shortcut: the native installer's claude.exe; an npm install (claude.cmd) needs CREW_CLAUDE_PTY_BIN set to a runnable path.
   const bin = process.env.CREW_CLAUDE_PTY_BIN || (process.platform === 'win32' ? 'claude.exe' : 'claude')
@@ -312,7 +314,24 @@ function spawnPty(e, text, resume) {
   })
 }
 
+// A fresh worktree opens on the CLI's folder trust dialog, and its default is "No, exit". The worktree is the owner's own
+// repo checked out by the crew, so the runner picks "Yes, I trust this folder" (down, Enter) once per process.
+function answerTrust(e, d) {
+  if (e.ready || e.trusted) return
+  e.head = (e.head + d).slice(-8000)
+  if (!/Yes,\s*I\s*trust\s*this\s*folder/.test(e.head.replace(/\x1b\[\d*C/g, ' '))) return
+  e.trusted = true
+  store(e, 'note', { text: 'Trusted the worktree folder' })
+  clearTimeout(e.readyTimer)
+  setTimeout(() => {
+    e.child?.write('\x1b[B')
+    setTimeout(() => e.child?.write('\r'), 250)
+  }, 400)
+  e.readyTimer = setTimeout(() => ready(e), 20000)
+}
+
 function output(e, d) {
+  answerTrust(e, d)
   e.ring = (e.ring + d).slice(-RING)
   e.log ??= (mkdirSync(PTY_DIR, { recursive: true }), createWriteStream(ptyLogPath(e.run_id), { flags: 'a' }))
   e.log.write(d)

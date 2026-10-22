@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Component, useEffect, useState } from 'react'
 import { api, on, setAuthHandler, useData } from './api.js'
 import { Button, ConfirmButton, ErrorText, More, tokens, useAction } from './ui.jsx'
 import Login from './screens/Login.jsx'
@@ -108,7 +108,7 @@ function Shell() {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
-        <main id="content" key={pid}>{screen}</main>
+        <main id="content" key={pid}><Boundary key={route.view}>{screen}</Boundary></main>
       </div>
     </div>
   )
@@ -154,4 +154,21 @@ function Paused({ pid, reload }) {
       <ErrorText error={error} />
     </div>
   )
+}
+
+// One screen's render error must not blank the whole app; show it and offer a reload. key={route.view} resets it on navigation.
+class Boundary extends Component {
+  state = { error: null }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error, info) { console.error(error, info.componentStack) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <section className="page stack">
+        <h1>This screen hit an error</h1>
+        <p className="error">{String(this.state.error?.message || this.state.error)}</p>
+        <div className="actions"><Button variant="primary" onClick={() => location.reload()}>Reload</Button></div>
+      </section>
+    )
+  }
 }

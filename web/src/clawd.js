@@ -3,7 +3,9 @@
 
 const IDLE = ['idle-coffee', 'idle-book', 'idle-look', 'idle-doze', 'idle']
 
-function forTool(ev = '') {
+// ev is null until the run's first tool call.
+function forTool(ev) {
+  if (!ev) return null
   const [tool, ...rest] = ev.split(' ')
   const arg = rest.join(' ')
   if (tool === 'Bash') {
