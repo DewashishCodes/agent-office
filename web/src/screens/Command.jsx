@@ -22,6 +22,7 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
   const [chatId, setChatState] = useState(openChat[slot] ?? null)
   useEffect(() => setChatState(openChat[slot] ?? null), [slot])
   const [listOpen, setListOpen] = useState(false)
+  const [hotfix, setHotfix] = useState(false)
   const pick = id => { openChat[slot] = id; setChatState(id); setListOpen(false); atBottom.current = true }
   const [chats] = useData(agents && `/projects/${pid}/chats?floor=${floor.key}`, on(pid, 'chat', 'message'))
   const [loaded, , error] = useData(chatId && `/projects/${pid}/messages?chat=${chatId}`, on(pid, 'message'))
@@ -58,9 +59,10 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
     if (!t) return
     atBottom.current = true
     run(async () => {
-      const r = await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t, floor: floor.key, chat_id: chatId } })
+      const r = await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t, floor: floor.key, chat_id: chatId, hotfix } })
       if (!chatId && r?.chat_id) pick(r.chat_id)
       setText('')
+      setHotfix(false)
       setWaiting(true)
     })
   }
@@ -107,6 +109,12 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
           onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || (enterSends && !e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); send() } }} />
         <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Send</Button>
       </form>
+      {floor.key === 'tech' && (
+        <label className={`check small hotfix-toggle ${hotfix ? 'warn' : 'muted'}`}>
+          <input type="checkbox" checked={hotfix} onChange={e => setHotfix(e.target.checked)} />
+          {hotfix ? 'Hotfix: after you approve the plan, tasks push straight to the project branch. No PR, Reviewer or QA.' : 'Hotfix'}
+        </label>
+      )}
       <ErrorText error={sendError} />
       {listOpen && <Sheet title="Chats" onClose={() => setListOpen(false)}>{list}</Sheet>}
       {adding && <OpenFloorSheet pid={pid} floors={floors} open={open} templates={templates}
@@ -163,6 +171,7 @@ function PlanCard({ orderId, pid, agents }) {
     <article className="card plan" aria-label={`Plan for order ${orderId}`}>
       <header className="plan-head">
         <h3>{plan.summary || order.text}</h3>
+        {order.hotfix ? <span className="pill warn" title="Pushes straight to the project branch, no PR, review or QA">Hotfix</span> : null}
         <Badge status={order.status} />
       </header>
       {tasks.length > 0 && (
