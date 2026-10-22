@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, on, setAuthHandler, useData } from './api.js'
-import { Button, ConfirmButton, ErrorText, tokens, useAction } from './ui.jsx'
+import { Button, ConfirmButton, ErrorText, More, tokens, useAction } from './ui.jsx'
 import Login from './screens/Login.jsx'
 import Projects from './screens/Projects.jsx'
 import Command from './screens/Command.jsx'
@@ -9,14 +9,22 @@ import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
 import Inbox from './screens/Inbox.jsx'
 import Wall from './screens/Wall.jsx'
+import Home from './screens/Home.jsx'
 
-// Wall is second on the phone; wall.css moves it first from 900px, where it is the main screen.
-const TABS = [['command', 'Command'], ['wall', 'Wall'], ['board', 'Board'], ['team', 'Team'], ['inbox', 'Inbox']]
+const ICONS = {
+  home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
+  command: 'M4 5h16v11H9l-5 4z',
+  wall: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6',
+  board: 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z',
+}
+const TABS = [['home', 'Home'], ['command', 'Command'], ['wall', 'Agents'], ['board', 'Board']]
+// Screens without their own tab light up the closest one.
+const TAB_OF = { inbox: 'home', team: 'wall', agent: 'wall' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
-  const [, view = 'command', id] = location.hash.split('/')
-  return { view: view || 'command', id: id ? Number(id) : null }
+  const [, view = 'home', id] = location.hash.split('/')
+  return { view: view || 'home', id: id ? Number(id) : null }
 }
 
 export default function App() {
@@ -59,15 +67,16 @@ function Shell() {
   const ctx = { pid, project: p, reloadProject: reloadDetail }
 
   let screen
-  if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={id => { choose(id); location.hash = '#/command' }} />
+  if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={id => { choose(id); location.hash = '#/home' }} />
   else if (view === 'board') screen = <Board key={route.id} {...ctx} orderId={route.id} />
   else if (view === 'team') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} />
   else if (view === 'wall') screen = <Wall {...ctx} />
-  else screen = <Command {...ctx} running={detail?.running_runs} />
+  else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
+  else screen = <Home {...ctx} />
 
-  const tab = view === 'agent' ? 'team' : view
+  const tab = TAB_OF[view] || view
   const count = openInbox?.length || 0
 
   return (
@@ -77,8 +86,9 @@ function Shell() {
           <div className="brand"><img src="/icon.svg" alt="" width="24" height="24" /> Agent Crew</div>
           {TABS.map(([id, name]) => (
             <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} aria-current={tab === id ? 'page' : undefined}>
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={ICONS[id]} /></svg>
               <span>{name}</span>
-              {id === 'inbox' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
+              {id === 'home' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
             </a>
           ))}
         </nav>
@@ -95,11 +105,10 @@ function Shell() {
 }
 
 function Header({ projects, project, detail, onPick, reload }) {
-  const [menu, setMenu] = useState(false)
   const [run, busy, error] = useAction()
   const util = detail?.rate_limit?.utilization
   const pct = util == null ? null : Math.round(util <= 1 ? util * 100 : util)
-  const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload(); setMenu(false) })
+  const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload() })
   const logout = () => run(async () => { await api('/logout', { method: 'POST' }); location.reload() })
 
   return (
@@ -111,22 +120,17 @@ function Header({ projects, project, detail, onPick, reload }) {
         <option value="new">Add or manage projects</option>
       </select>
       <div className="stats" aria-label="Usage">
-        {detail && <span title="Tokens used today">{tokens(detail.tokens_today)} today</span>}
+        {detail && <span className="tok-today" title="Tokens used today">{tokens(detail.tokens_today)} today</span>}
         {pct != null && <span className={pct >= 80 ? 'warn' : ''} title="Five hour rate limit used">5h {pct}%</span>}
       </div>
-      <div className="menu-wrap">
-        <Button variant="ghost" aria-expanded={menu} aria-controls="top-menu" onClick={() => setMenu(m => !m)}>Menu</Button>
-        {menu && (
-          <div id="top-menu" className="menu">
-            {project.paused
-              ? <p className="muted">Agents are stopped.</p>
-              : <ConfirmButton variant="danger" confirm="Stop every agent now" onConfirm={kill} disabled={busy}>Kill switch</ConfirmButton>}
-            <a className="btn ghost" href="#/projects" onClick={() => setMenu(false)}>Projects</a>
-            <Button variant="ghost" onClick={logout}>Log out</Button>
-            <ErrorText error={error} />
-          </div>
-        )}
-      </div>
+      {!project.paused && (
+        <ConfirmButton small variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all</ConfirmButton>
+      )}
+      <More label="Menu">
+        <a className="btn ghost" href="#/projects">Projects</a>
+        <Button variant="ghost" onClick={logout}>Log out</Button>
+      </More>
+      <ErrorText error={error} />
     </header>
   )
 }

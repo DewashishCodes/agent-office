@@ -45,6 +45,22 @@ export function ConfirmButton({ children, confirm = 'Confirm', onConfirm, varian
   )
 }
 
+// Overflow menu for secondary actions. Closes on outside click only, so a ConfirmButton inside keeps its second step.
+export function More({ label = 'More actions', children }) {
+  const ref = useRef()
+  useEffect(() => {
+    const f = e => { if (ref.current?.open && !ref.current.contains(e.target)) ref.current.open = false }
+    document.addEventListener('click', f)
+    return () => document.removeEventListener('click', f)
+  }, [])
+  return (
+    <details className="more" ref={ref}>
+      <summary className="btn ghost small icon" aria-label={label}>⋯</summary>
+      <div className="menu">{children}</div>
+    </details>
+  )
+}
+
 // run(fn) tracks busy and error for a button-triggered request.
 export function useAction() {
   const [s, set] = useState({ busy: false, error: null })

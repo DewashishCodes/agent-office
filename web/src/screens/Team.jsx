@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
-import { Button, ConfirmButton, Empty, ErrorText, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
+import { Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 
 const ROLES = ['custom', 'frontend', 'backend', 'planner', 'reviewer', 'qa']
@@ -20,6 +20,7 @@ export default function Team({ pid }) {
 
   return (
     <section className="page stack">
+      <a href="#/wall" className="back">Back to agents</a>
       <div className="row">
         <h1 className="grow">Team</h1>
         <Button variant="primary" onClick={() => setAdding(true)}>Add agent</Button>
@@ -53,15 +54,17 @@ function AgentCard({ a, lastEvent, reload, onQuick }) {
         {lastEvent && <span className="mono muted live">{lastEvent}</span>}
       </div>
       <div className="actions">
-        <a className="btn small" href={`#/agent/${a.id}`}>Edit</a>
         {a.owned_paths?.length > 0 && <Button small onClick={onQuick}>Quick task</Button>}
-        <Button small disabled={busy} onClick={() => post('/clone')}>Clone</Button>
         {a.status === 'paused'
           ? <Button small disabled={busy} onClick={() => post('/resume')}>Resume</Button>
           : <Button small disabled={busy} onClick={() => post('/pause')}>Pause</Button>}
-        {a.removable && a.role !== 'orchestrator'
-          ? <ConfirmButton small variant="ghost" confirm={`Remove ${a.name}`} disabled={busy} onConfirm={() => post('', 'DELETE')}>Remove</ConfirmButton>
-          : null}
+        <More>
+          <a className="btn ghost" href={`#/agent/${a.id}`}>Edit profile</a>
+          <Button variant="ghost" disabled={busy} onClick={() => post('/clone')}>Clone</Button>
+          {a.removable && a.role !== 'orchestrator'
+            ? <ConfirmButton variant="ghost" confirm={`Remove ${a.name}`} disabled={busy} onConfirm={() => post('', 'DELETE')}>Remove</ConfirmButton>
+            : null}
+        </More>
       </div>
       <ErrorText error={error} />
     </li>

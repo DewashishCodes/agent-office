@@ -1,14 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
-
-const OPEN = ['planning', 'awaiting_approval', 'in_progress', 'ready_to_merge']
+import { Md } from '../components/Transcript.jsx'
 
 export default function Command({ pid, running }) {
   const [messages, , error] = useData(`/projects/${pid}/messages`, on(pid, 'message'))
   const [agents] = useData(`/projects/${pid}/agents`, on(pid, 'agent'))
-  const [orders] = useData(`/projects/${pid}/orders`, on(pid, 'order', 'task'))
-  const open = orders?.filter(o => OPEN.includes(o.status)) || []
   const [text, setText] = useState('')
   const [run, busy, sendError] = useAction()
   const [orchRun, setOrchRun] = useState(null)
@@ -24,13 +21,21 @@ export default function Command({ pid, running }) {
     if (ev.type === 'message' && ev.data.role === 'orchestrator') setWaiting(false)
   })
 
+  // Follow new messages only while the owner is at the bottom, so reading back is not interrupted.
+  const atBottom = useRef(true)
+  useEffect(() => {
+    const f = () => { atBottom.current = innerHeight + scrollY >= document.documentElement.scrollHeight - 150 }
+    addEventListener('scroll', f, { passive: true })
+    return () => removeEventListener('scroll', f)
+  }, [])
   const count = messages?.length
-  useEffect(() => { if (count) window.scrollTo(0, document.body.scrollHeight) }, [count])
+  useEffect(() => { if (count && atBottom.current) window.scrollTo(0, document.body.scrollHeight) }, [count])
 
   const send = e => {
     e?.preventDefault()
     const t = text.trim()
     if (!t) return
+    atBottom.current = true
     run(async () => {
       await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } })
       setText('')
@@ -41,16 +46,6 @@ export default function Command({ pid, running }) {
   const thinking = orchRun || waiting
   return (
     <section className="chat">
-      {open.length > 0 && (
-        <nav className="orders-strip" aria-label="Open orders">
-          {open.map(o => (
-            <a key={o.id} className="card order-chip" href={`#/board/${o.id}`}>
-              <span className="title">#{o.id} {o.plan?.summary || o.text}</span>
-              <span className="row small"><Badge status={o.status} />{o.total > 0 && <span className="muted">{o.done}/{o.total} done</span>}</span>
-            </a>
-          ))}
-        </nav>
-      )}
       <ErrorText error={error} />
       {messages && messages.length === 0 && (
         <Empty>Give the Orchestrator an order, for example: Add Google sign-in. It replies with a plan for you to approve.</Empty>
@@ -59,7 +54,7 @@ export default function Command({ pid, running }) {
         {messages?.map(m => (
           <li key={m.id} className={`msg ${m.role}`}>
             <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : 'Orchestrator'} <span className="muted">{ago(m.created_at)}</span></div>
-            {m.text && <div className="bubble">{m.text}</div>}
+            {m.text && <div className="bubble"><Md text={m.text} /></div>}
             {m.order_id && <PlanCard orderId={m.order_id} pid={pid} agents={agents} />}
           </li>
         ))}

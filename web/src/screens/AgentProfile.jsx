@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, useData } from '../api.js'
 import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
+import Transcript from '../components/Transcript.jsx'
 
 const PERMS = [['open_pr', 'Open PRs'], ['comment', 'Comment on PRs'], ['run_tests', 'Run tests'], ['merge', 'Merge'], ['autonomous', 'Autonomous (never asks before commands)']]
 const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
@@ -28,9 +29,13 @@ export default function AgentProfile({ pid, id }) {
   const [run, busy, saveError] = useAction()
   const [runNote, noteBusy, noteError] = useAction()
 
-  if (error) return <section className="page"><a href="#/team">Back to team</a><ErrorText error={error} /></section>
+  if (error) return <section className="page"><a href="#/wall">Back to agents</a><ErrorText error={error} /></section>
   if (!a || !form) return <section className="page muted">Loading</section>
 
+  const lastRun = a.runs?.[0]
+  const current = a.tasks?.find(t => t.status === 'in_progress')
+  const doneCount = a.tasks?.filter(t => t.status === 'done').length || 0
+  const cost = (a.runs || []).reduce((s, r) => s + Number(r.cost_usd || 0), 0)
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setSaved(false) }
   const save = e => {
     e.preventDefault()
@@ -61,58 +66,25 @@ export default function AgentProfile({ pid, id }) {
 
   return (
     <section className="page stack">
-      <a href="#/team" className="back">Back to team</a>
+      <a href="#/wall" className="back">Back to agents</a>
       <header className="row">
         <span className="avatar big" aria-hidden="true">{initials(a.name)}</span>
         <div className="grow">
           <h1>{a.name} <StatusDot status={a.status} /></h1>
-          <p className="muted small">{a.role}, {a.status}, daily budget {tokens(a.daily_token_budget)} tokens</p>
+          <p className="muted small">{a.role}{a.specialty ? `, ${a.specialty}` : ''}</p>
+          <p className="muted small">{doneCount} of the last {a.tasks?.length || 0} tasks done, ${cost.toFixed(2)} over the last {a.runs?.length || 0} runs, budget {tokens(a.daily_token_budget)} tokens a day</p>
         </div>
       </header>
 
-      <form className="card stack" onSubmit={save}>
-        <h2>Profile</h2>
-        <div className="grid2">
-          {f('name', 'Name', { required: true })}
-          {f('role', 'Role (set at creation)', { readOnly: true })}
+      <section className="card stack">
+        <div className="row wrap">
+          <h2 className="grow">Now</h2>
+          {lastRun && <Badge status={lastRun.status} />}
         </div>
-        {f('specialty', 'Specialty')}
-        <label className="field"><span>Instructions</span>
-          <textarea rows="5" value={form.instructions} onChange={e => set('instructions', e.target.value)} />
-        </label>
-        <div className="grid2">
-          {f('model', 'Model', { list: 'models' })}
-          <label className="field"><span>Effort</span>
-            <select value={form.effort} onChange={e => set('effort', e.target.value)}>
-              {['low', 'medium', 'high', 'xhigh', 'max'].map(x => <option key={x}>{x}</option>)}
-            </select>
-          </label>
-          {f('max_parallel', 'Max parallel tasks', { type: 'number', min: 1, max: 10 })}
-          {f('daily_token_budget', 'Daily token budget', { type: 'number', min: 0, step: 100000 })}
-        </div>
-        <datalist id="models">{['opus', 'sonnet', 'haiku'].map(m => <option key={m} value={m} />)}</datalist>
-        <label className="field"><span>Owned paths (one glob per line)</span>
-          <textarea rows="4" className="mono" value={form.owned_paths} onChange={e => set('owned_paths', e.target.value)} />
-        </label>
-        <label className="field"><span>Read-only paths (one glob per line)</span>
-          <textarea rows="3" className="mono" value={form.readonly_paths} onChange={e => set('readonly_paths', e.target.value)} />
-        </label>
-        <fieldset className="perms">
-          <legend>Permissions</legend>
-          {PERMS.map(([k, label]) => (
-            <label key={k} className="check">
-              <input type="checkbox" checked={!!form.permissions[k]} onChange={e => set('permissions', { ...form.permissions, [k]: e.target.checked })} />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-        <div className="actions">
-          <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving' : 'Save profile'}</Button>
-          <Button variant="ghost" onClick={() => { setForm(toForm(a)); setSaved(false) }}>Discard changes</Button>
-          {saved && <span className="ok small" role="status">Saved</span>}
-        </div>
-        <ErrorText error={saveError} />
-      </form>
+        <p className="small">{current ? <>On: {current.title}</> : <span className="muted">{a.status === 'paused' ? 'Paused' : 'No current task'}</span>}</p>
+        <Transcript runId={lastRun?.id} />
+        {lastRun?.status === 'running' && <a className="small" href="#/wall">Pause, message or take over on the wall</a>}
+      </section>
 
       <section className="card stack">
         <h2>Notes</h2>
@@ -145,6 +117,52 @@ export default function AgentProfile({ pid, id }) {
         <p className="muted small">What this agent said at the end of each recent run. Read only.</p>
         {a.runs?.length ? <ul className="list">{a.runs.map(r => <RunItem key={r.id} r={r} />)}</ul> : <Empty>No runs yet</Empty>}
       </section>
+
+      <details className="card settings">
+        <summary><h2>Settings</h2><span className="muted small">model, budget, paths, permissions</span></summary>
+        <form className="stack" onSubmit={save}>
+          <div className="grid2">
+            {f('name', 'Name', { required: true })}
+            {f('role', 'Role (set at creation)', { readOnly: true })}
+          </div>
+          {f('specialty', 'Specialty')}
+          <label className="field"><span>Instructions</span>
+            <textarea rows="5" value={form.instructions} onChange={e => set('instructions', e.target.value)} />
+          </label>
+          <div className="grid2">
+            {f('model', 'Model', { list: 'models' })}
+            <label className="field"><span>Effort</span>
+              <select value={form.effort} onChange={e => set('effort', e.target.value)}>
+                {['low', 'medium', 'high', 'xhigh', 'max'].map(x => <option key={x}>{x}</option>)}
+              </select>
+            </label>
+            {f('max_parallel', 'Max parallel tasks', { type: 'number', min: 1, max: 10 })}
+            {f('daily_token_budget', 'Daily token budget', { type: 'number', min: 0, step: 100000 })}
+          </div>
+          <datalist id="models">{['opus', 'sonnet', 'haiku'].map(m => <option key={m} value={m} />)}</datalist>
+          <label className="field"><span>Owned paths (one glob per line)</span>
+            <textarea rows="4" className="mono" value={form.owned_paths} onChange={e => set('owned_paths', e.target.value)} />
+          </label>
+          <label className="field"><span>Read-only paths (one glob per line)</span>
+            <textarea rows="3" className="mono" value={form.readonly_paths} onChange={e => set('readonly_paths', e.target.value)} />
+          </label>
+          <fieldset className="perms">
+            <legend>Permissions</legend>
+            {PERMS.map(([k, label]) => (
+              <label key={k} className="check">
+                <input type="checkbox" checked={!!form.permissions[k]} onChange={e => set('permissions', { ...form.permissions, [k]: e.target.checked })} />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+          <div className="actions">
+            <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving' : 'Save profile'}</Button>
+            <Button variant="ghost" onClick={() => { setForm(toForm(a)); setSaved(false) }}>Discard changes</Button>
+            {saved && <span className="ok small" role="status">Saved</span>}
+          </div>
+          <ErrorText error={saveError} />
+        </form>
+      </details>
     </section>
   )
 }

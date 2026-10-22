@@ -8,7 +8,7 @@ export default function Inbox({ pid }) {
   return (
     <section className="page stack">
       <div className="row wrap">
-        <h1 className="grow">Inbox</h1>
+        <h1 className="grow">Inbox history</h1>
         <PushButton />
       </div>
       <label className="check">
@@ -23,7 +23,7 @@ export default function Inbox({ pid }) {
 
 const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
 
-function Item({ i }) {
+export function Item({ i }) {
   const [text, setText] = useState('')
   const [revising, setRevising] = useState(false)
   const [run, busy, error] = useAction()
@@ -89,7 +89,7 @@ function urlB64(s) {
   return Uint8Array.from(b, c => c.charCodeAt(0))
 }
 
-function PushButton() {
+export function PushButton() {
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   const [on, setOn] = useState(false)
   const [run, busy, error] = useAction()

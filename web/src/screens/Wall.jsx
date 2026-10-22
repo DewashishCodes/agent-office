@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
 import Transcript from '../components/Transcript.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import '../wall.css'
@@ -18,6 +18,10 @@ export default function Wall({ pid }) {
 
   return (
     <section className="wall">
+      <div className="row wall-head">
+        <h1 className="grow">Agents</h1>
+        <a className="btn small" href="#/team">Manage team</a>
+      </div>
       <div className="tiles">
         {shown.map(a => (
           <Tile key={a.id} a={a} expanded={open === a.id} onExpand={() => setOpen(open === a.id ? null : a.id)} onQuick={() => setQuick(a.name)} />
@@ -26,7 +30,7 @@ export default function Wall({ pid }) {
       </div>
       <aside className="rail" aria-label="Crew status">
         {wall.permissions.length > 0 && (
-          <section className="card stack">
+          <section className="card stack waiting">
             <h2>Waiting for you</h2>
             {wall.permissions.flatMap(p => (p.pending_permission || []).map(req => (
               <Permission key={req.request_id} runId={p.run_id} req={req} who={p.agent_name} />
@@ -69,7 +73,7 @@ export default function Wall({ pid }) {
   )
 }
 
-const stateOf = r => (r?.status === 'running' ? r.state : 'idle')
+export const stateOf = r => (r?.status === 'running' ? r.state : 'idle')
 
 function Tile({ a, expanded, onExpand, onQuick }) {
   const r = a.run
@@ -104,7 +108,7 @@ function Tile({ a, expanded, onExpand, onQuick }) {
       <Transcript runId={r?.id} tail={expanded ? 500 : 40} className={expanded ? 'tall' : ''} />
       {liveRun && (r.pending_permission || []).map(req => <Permission key={req.request_id} runId={r.id} req={req} />)}
       {liveRun && state !== 'handed_off' && (
-        <form className="row" onSubmit={send}>
+        <form className="row tell" onSubmit={send}>
           <label className="sr-only" htmlFor={`tell-${a.id}`}>Message to {a.name}</label>
           <input id={`tell-${a.id}`} value={text} onChange={e => setText(e.target.value)} placeholder={`Tell ${a.name}…`} />
           <Button type="submit" disabled={busy || !text.trim()}>Send</Button>
@@ -114,10 +118,14 @@ function Tile({ a, expanded, onExpand, onQuick }) {
         {liveRun && (state === 'running' || state === 'waiting') && <Button small disabled={busy} onClick={() => post('interrupt')}>Pause</Button>}
         {liveRun && state === 'paused' && <Button small variant="primary" disabled={busy} onClick={() => post('resume')}>Resume</Button>}
         {liveRun && state === 'handed_off' && <Button small variant="primary" disabled={busy} onClick={() => post('resume', { text: HAND_BACK })}>Hand back</Button>}
-        {liveRun && r.session_id && state !== 'handed_off' && <Button small disabled={busy} onClick={takeOver}>Take over</Button>}
-        {liveRun && <ConfirmButton small variant="ghost" confirm="Stop this run" disabled={busy} onConfirm={() => post('kill')}>Kill</ConfirmButton>}
-        {a.owned_paths?.length > 0 && <Button small variant="ghost" onClick={onQuick}>Quick task</Button>}
-        <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Expand'}</Button>
+        <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>
+        {(liveRun || a.owned_paths?.length > 0) && (
+          <More>
+            {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over in terminal</Button>}
+            {a.owned_paths?.length > 0 && <Button variant="ghost" onClick={onQuick}>Quick task</Button>}
+            {liveRun && <ConfirmButton variant="ghost" confirm="Stop this run" disabled={busy} onConfirm={() => post('kill')}>Kill run</ConfirmButton>}
+          </More>
+        )}
       </div>
       <ErrorText error={error} />
       {handoff && (

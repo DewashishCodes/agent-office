@@ -10,10 +10,15 @@ export default function Board({ pid, project, orderId }) {
   const [orders] = useData(`/projects/${pid}/orders`, on(pid, 'order'))
   const [agent, setAgent] = useState('')
   const [order, setOrder] = useState(orderId ? String(orderId) : '')
-  const [col, setCol] = useState('in_progress')
+  const [showDone, setShowDone] = useState(false)
   const [openId, setOpenId] = useState(null)
 
   const shown = (tasks || []).filter(t => (!agent || String(t.agent_id) === agent) && (!order || String(t.order_id) === order))
+  // Phone list: one group per order, newest first, finished work hidden unless asked for.
+  const groups = (orders || []).filter(o => !order || String(o.id) === order).map(o => ({
+    o, list: shown.filter(t => t.order_id === o.id && (showDone || t.status !== 'done')),
+  })).filter(g => g.list.length)
+  const card = t => <TaskCard key={t.id} t={t} onOpen={() => setOpenId(t.id)} />
 
   return (
     <section className="page board-page">
@@ -32,42 +37,54 @@ export default function Board({ pid, project, orderId }) {
             {orders?.map(o => <option key={o.id} value={o.id}>#{o.id} {o.plan?.summary || o.text}</option>)}
           </select>
         </label>
+        <label className="check done-toggle">
+          <input type="checkbox" checked={showDone} onChange={e => setShowDone(e.target.checked)} /> Show done tasks
+        </label>
       </div>
       <ErrorText error={error} />
-      <div className="col-pick" role="group" aria-label="Column">
-        {COLS.map(([id, name]) => (
-          <Button key={id} small variant={col === id ? 'primary' : 'ghost'} aria-pressed={col === id} onClick={() => setCol(id)}>
-            {name} <span className="n">{shown.filter(t => t.status === id).length}</span>
-          </Button>
+      <div className="board-list stack">
+        {tasks && !groups.length && <Empty>{showDone ? 'No tasks yet.' : 'Nothing in flight. Done tasks are hidden.'}</Empty>}
+        {groups.map(({ o, list }) => (
+          <details key={o.id} className="group" open>
+            <summary>
+              <span className="grow title clip">#{o.id} {o.plan?.summary || o.text}</span>
+              <Badge status={o.status} />
+              {o.total > 0 && <span className="muted small">{o.done}/{o.total}</span>}
+            </summary>
+            <div className="list">{list.map(card)}</div>
+          </details>
         ))}
       </div>
       <div className="board">
         {COLS.map(([id, name]) => {
           const list = shown.filter(t => t.status === id)
           return (
-            <section key={id} className={`column ${col === id ? 'active' : ''}`} aria-label={name}>
+            <section key={id} className="column" aria-label={name}>
               <h2>{name} <span className="n">{list.length}</span></h2>
-              {list.length === 0 ? <Empty>Nothing here</Empty> : list.map(t => (
-                <button key={t.id} type="button" className="task-card" onClick={() => setOpenId(t.id)}>
-                  <span className="title">{t.title}</span>
-                  <span className="meta">
-                    <span className="mono">#{t.id}</span>
-                    <span className="pill">{t.role}</span>
-                    <span className="pill">{t.size}</span>
-                    {t.agent_name && <span>{t.agent_name}</span>}
-                    {t.attempts > 0 && <span className="warn">try {t.attempts + 1}</span>}
-                    {t.pr_number && <span>PR #{t.pr_number}</span>}
-                    {t.status === 'planned' && t.wait_reason && <span className="wait">{t.wait_reason}</span>}
-                    {t.merged ? <span className="ok">merged</span> : null}
-                  </span>
-                </button>
-              ))}
+              {list.length === 0 ? <Empty>Nothing here</Empty> : list.map(card)}
             </section>
           )
         })}
       </div>
       {openId && <TaskSheet id={openId} pid={pid} repo={project.repo} onClose={() => setOpenId(null)} />}
     </section>
+  )
+}
+
+function TaskCard({ t, onOpen }) {
+  return (
+    <button type="button" className="task-card" onClick={onOpen}>
+      <span className="row"><span className="title grow">{t.title}</span><Badge status={t.status} /></span>
+      <span className="meta">
+        <span className="mono">#{t.id}</span>
+        <span className="pill">{t.size}</span>
+        {t.agent_name && <span>{t.agent_name}</span>}
+        {t.attempts > 0 && <span className="warn">try {t.attempts + 1}</span>}
+        {t.pr_number && <span>PR #{t.pr_number}</span>}
+        {t.status === 'planned' && t.wait_reason && <span className="wait">{t.wait_reason}</span>}
+        {t.merged ? <span className="ok">merged</span> : null}
+      </span>
+    </button>
   )
 }
 
