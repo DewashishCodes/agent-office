@@ -54,7 +54,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 ## Status (2026-10-22)
 
-Latest (2026-10-23): hotfix mode and switching the project branch. The hotfix git steps are tested against a local bare repo; no real hotfix run yet. Phone access: Tailscale is installed and logged in, Serve waits for the owner to enable it on the tailnet, then `tailscale serve --bg 5190` gives https://desktop-h9pmrj0.tail397325.ts.net.
+Latest (2026-10-23): hotfix mode and switching the project branch. The hotfix git steps are tested against a local bare repo; no real hotfix run yet. Phone access is live: `tailscale serve --bg 5190` (persists across restarts, tailnet only, off with `tailscale serve --https=443 off`) serves https://desktop-h9pmrj0.tail397325.ts.net. Checked from the PC: valid certificate, login, API, SSE, manifest and service worker.
 
 Before that: Command chats (list, new chat per visit, resume), model and effort picker on Team cards and profiles (Clawd effort gauge and model-switch sets), a full Custom agent form (owned paths, model, effort, open_pr by default), the Board kanban fits the screen with per-column scroll, Team crash fix. Pushed to the private GitHub repo `DewashishCodes/agent-crew`. Build and tests pass; chats checked through the API only, the new screens not yet tried in a browser. A DB backup from before the chats migration is in `data/crew-before-chats.db`.
 
@@ -68,7 +68,7 @@ Not yet verified live: crew_ask (blocking answers), permission timeout, removing
 
 ## Next (Phase D, still open)
 
-1. HTTPS for phone access: Tailscale serve (recommended) or a cloudflared tunnel. Ask the owner which.
+1. Done: HTTPS through Tailscale Serve (see Status). The phone needs the Tailscale app connected.
 2. Install the PWA on the phone, turn on notifications, confirm a push arrives.
 3. Try a Reviewer rejection path and the kill switch on live runs (parallel agents are verified).
 4. Optional: rename and delete for Command chats, a project settings screen (PATCH /api/projects/:id exists), login rate limit.
