@@ -10,7 +10,7 @@ import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday
   hookEvent, watchPty, ptyInput, ptyResize, ptyLogPath } from './runner.js'
 import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
-import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
+import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
@@ -259,7 +259,11 @@ app.post('/api/projects/:id/resume', (req, res) => {
 
 // Chat and orders
 
+app.get('/api/projects/:id/chats', (req, res) => res.json(all(`SELECT c.*, (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) messages
+  FROM chats c WHERE project_id = ? AND floor = ? ORDER BY updated_at DESC, id DESC LIMIT 100`, project(req).id, floorKey(req.query.floor))))
+
 app.get('/api/projects/:id/messages', (req, res) => {
+  if (req.query.chat) return res.json(all('SELECT * FROM messages WHERE project_id = ? AND chat_id = ? ORDER BY id', project(req).id, int(req.query.chat)))
   const support = req.query.channel === 'support'
   res.json(all(`SELECT * FROM (SELECT * FROM messages WHERE project_id = ? AND channel = ?${support ? '' : ' AND floor = ?'} ORDER BY id DESC LIMIT 200) ORDER BY id`,
     project(req).id, ...(support ? ['support'] : ['command', floorKey(req.query.floor)])))
@@ -270,8 +274,12 @@ const floorKey = v => v == null || v === '' ? 'tech' : floorOf(v)?.key ?? (() =>
 app.post('/api/projects/:id/messages', (req, res) => {
   const p = project(req), floor = floorKey(req.body?.floor)
   if (!activeAgents(p.id).some(a => a.floor === floor && a.role === 'orchestrator')) throw fail(400, `The ${floorOf(floor).name} floor has no lead. Open the floor first.`)
-  background(p.id, chat(p.id, str(req.body?.text, 'text'), floor))
-  res.status(202).json({ ok: true })
+  const text = str(req.body?.text, 'text')
+  // Without chat_id the message starts a new chat; its id goes back so the screen can follow it.
+  const chat_id = req.body?.chat_id == null ? newChat(p.id, floor, text)
+    : found(get('SELECT id FROM chats WHERE id = ? AND project_id = ? AND floor = ?', int(req.body.chat_id), p.id, floor), 'chat').id
+  background(p.id, chat(p.id, text, floor, 'user', chat_id))
+  res.status(202).json({ ok: true, chat_id })
 })
 
 app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*,
@@ -689,7 +697,8 @@ app.post('/api/inbox/:id/action', async (req, res) => {
   } else if (key === 'question:answer') {
     // Agent questions go back to the agent; anything else is a note for the Orchestrator.
     if (!answerFromOwner(item, str(text, 'text'))) {
-      background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`))
+      const floor = (item.order_id && getOrder(item.order_id)?.floor) || 'tech'
+      background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`, floor, 'user', chatFor(item.project_id, floor, item.order_id)))
       status = 202
     }
   } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'))
