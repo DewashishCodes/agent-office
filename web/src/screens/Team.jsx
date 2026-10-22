@@ -75,14 +75,26 @@ function AgentCard({ a, floors, lastEvent, reload, onQuick }) {
 
 function AddAgent({ pid, floors, floor, onClose }) {
   const [templates] = useData('/templates')
-  const [name, setName] = useState('')
   const [role, setRole] = useState('custom')
+  const [c, setC] = useState({ name: '', floor: floor || 'tech', specialty: '', instructions: '', owned_paths: '', model: 'sonnet', effort: 'medium' })
   const [run, busy, error] = useAction()
   const create = body => run(async () => {
     const a = await api(`/projects/${pid}/agents`, { method: 'POST', body })
     onClose()
     if (a?.id) location.hash = `#/agent/${a.id}`
   })
+  // Same defaults onboarding gives hired agents; without open_pr the agent's work never ships.
+  const submit = e => {
+    e.preventDefault()
+    const body = {
+      ...c, role, name: c.name.trim(),
+      owned_paths: c.owned_paths.split('\n').map(x => x.trim()).filter(Boolean),
+      ...(role === 'custom' && { permissions: { open_pr: true, comment: true, run_tests: c.floor === 'tech', merge: false } }),
+    }
+    // Blank fields keep the role template's own values instead of wiping them.
+    for (const k of ['specialty', 'instructions', 'owned_paths']) if (!body[k].length) delete body[k]
+    create(body)
+  }
   return (
     <Sheet title="Add agent" onClose={onClose}>
       <div className="stack">
@@ -95,15 +107,37 @@ function AddAgent({ pid, floors, floor, onClose }) {
             </li>
           ))}
         </ul>
-        <h3>Blank</h3>
-        <form className="row wrap" onSubmit={e => { e.preventDefault(); create({ role, name: name.trim(), floor: floor || 'tech' }) }}>
-          <label className="field grow"><span>Name</span>
-            <input value={name} onChange={e => setName(e.target.value)} required placeholder="Docs Writer" />
+        <h3>Custom</h3>
+        <form className="stack" onSubmit={submit}>
+          <div className="grid2">
+            <label className="field"><span>Name</span>
+              <input value={c.name} onChange={e => setC({ ...c, name: e.target.value })} required placeholder="Docs Writer" />
+            </label>
+            <label className="field"><span>Role</span>
+              <select value={role} onChange={e => setRole(e.target.value)}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
+            </label>
+            <label className="field"><span>Floor</span>
+              <select value={c.floor} onChange={e => setC({ ...c, floor: e.target.value })}>
+                {(floors?.length ? floors : [{ key: 'tech', name: 'Tech' }]).map(f => <option key={f.key} value={f.key}>{f.name}</option>)}
+              </select>
+            </label>
+            <label className="field"><span>Specialty</span>
+              <input value={c.specialty} onChange={e => setC({ ...c, specialty: e.target.value })} placeholder="README, guides, API docs" />
+            </label>
+            <label className="field"><span>Model</span>
+              <select value={c.model} onChange={e => setC({ ...c, model: e.target.value })}>{['haiku', 'sonnet', 'opus'].map(x => <option key={x}>{x}</option>)}</select>
+            </label>
+            <label className="field"><span>Effort</span>
+              <select value={c.effort} onChange={e => setC({ ...c, effort: e.target.value })}>{['low', 'medium', 'high', 'xhigh', 'max'].map(x => <option key={x}>{x}</option>)}</select>
+            </label>
+          </div>
+          <label className="field"><span>Instructions</span>
+            <textarea rows="3" value={c.instructions} onChange={e => setC({ ...c, instructions: e.target.value })} placeholder="How this agent should work, every task" />
           </label>
-          <label className="field"><span>Role</span>
-            <select value={role} onChange={e => setRole(e.target.value)}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
+          <label className="field"><span>Owned paths, one glob per line (it only gets tasks touching these)</span>
+            <textarea rows="3" className="mono" value={c.owned_paths} onChange={e => setC({ ...c, owned_paths: e.target.value })} placeholder={'docs/**\nREADME.md'} />
           </label>
-          <Button type="submit" disabled={busy || !name.trim()}>Create</Button>
+          <div className="actions"><Button type="submit" variant="primary" disabled={busy || !c.name.trim()}>Create agent</Button></div>
         </form>
         <ErrorText error={error} />
       </div>
