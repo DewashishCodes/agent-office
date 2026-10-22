@@ -162,6 +162,7 @@ function addColumn(table, col, def) {
 addColumn('runs', 'turn', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('runs', 'state', "TEXT NOT NULL DEFAULT 'running'")   // running | waiting | paused | handed_off, meaningful while status is running
 addColumn('runs', 'pending_permission', 'TEXT')                 // JSON array of open can_use_tool requests, or null
+addColumn('runs', 'terminal', 'INTEGER NOT NULL DEFAULT 0')                   // 1 = ran in a real terminal, replay from data/pty/run-<id>.log
 addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name the plan assigned; matchAgent prefers it
 addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
 addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock

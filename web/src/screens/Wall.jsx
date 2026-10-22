@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
-import Transcript from '../components/Transcript.jsx'
+import Terminal from '../components/Terminal.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import '../wall.css'
 
@@ -88,7 +88,8 @@ function Tile({ a, expanded, onExpand, onQuick }) {
     const t = text.trim()
     if (t) post('send', { text: t }).then(() => setText(''))
   }
-  const takeOver = () => run(async () => setHandoff(await api(`/runs/${r.id}/handoff`, { method: 'POST' })))
+  // A terminal run hands over the keyboard in place; an older stream-json run gets the resume command for your own terminal.
+  const takeOver = () => run(async () => { const h = await api(`/runs/${r.id}/handoff`, { method: 'POST' }); if (!h.terminal) setHandoff(h) })
   const pct = a.daily_token_budget ? Math.min(100, Math.round((a.tokens_today / a.daily_token_budget) * 100)) : 0
 
   return (
@@ -105,7 +106,7 @@ function Tile({ a, expanded, onExpand, onQuick }) {
         <span style={{ width: `${pct}%` }} className={pct >= 90 ? 'hot' : ''} />
       </div>
       {liveRun && r.last_event && <p className="mono muted small live">{r.last_event}</p>}
-      <Transcript runId={r?.id} tail={expanded ? 500 : 40} className={expanded ? 'tall' : ''} />
+      <Terminal run={r} drive={expanded} interactive={liveRun && state === 'handed_off'} className={expanded ? 'tall' : ''} />
       {liveRun && (r.pending_permission || []).map(req => <Permission key={req.request_id} runId={r.id} req={req} />)}
       {liveRun && state !== 'handed_off' && (
         <form className="row tell" onSubmit={send}>
@@ -121,7 +122,7 @@ function Tile({ a, expanded, onExpand, onQuick }) {
         <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>
         {(liveRun || a.owned_paths?.length > 0) && (
           <More>
-            {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over in terminal</Button>}
+            {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over the keyboard</Button>}
             {a.owned_paths?.length > 0 && <Button variant="ghost" onClick={onQuick}>Quick task</Button>}
             {liveRun && <ConfirmButton variant="ghost" confirm="Stop this run" disabled={busy} onConfirm={() => post('kill')}>Kill run</ConfirmButton>}
           </More>

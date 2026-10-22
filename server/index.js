@@ -1,10 +1,12 @@
 import express from 'express'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
+import { existsSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, template, createAgent, seedRoster } from './roster.js'
-import { killProject, killRun, tokensToday, projectTokensToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents } from './runner.js'
+import { killProject, killRun, tokensToday, projectTokensToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
+  hookEvent, watchPty, ptyInput, ptyResize, ptyLogPath } from './runner.js'
 import { repoInfo, mergePR } from './github.js'
 import { runOnboarding } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
@@ -62,6 +64,16 @@ function retryTask(id) {
 
 export const app = express()
 app.set('trust proxy', true)
+
+// Hooks and the status line of terminal runs (server/hook.mjs). Same trust as the crew MCP: loopback plus the per-run token.
+// Before the global parser: a PermissionRequest for a big Write carries the whole file.
+app.post('/hook/:token', express.json({ limit: '50mb' }), async (req, res) => {
+  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return res.status(403).end()
+  const out = await hookEvent(req.params.token, req.query.kind, req.body)
+  if (typeof out === 'string') res.type('text').send(out)
+  else res.json(out)
+})
+
 app.use(express.json({ limit: '1mb' }))
 
 // Crew MCP for agent sessions on this host; auth is the per-run token, not the owner cookie.
@@ -271,6 +283,46 @@ app.get('/api/runs/:id', (req, res) => res.json(runRow(req)))
 app.get('/api/runs/:id/events', (req, res) => {
   const r = runRow(req), { after, tail } = req.query
   res.json(getRunEvents(r.id, tail ? { tail: Math.min(int(tail), 500) } : { after: after ? Number(after) || 0 : 0 }))
+})
+
+// Last bytes of a finished terminal run, for replay.
+function ptyTail(run_id, max = 1024 * 1024) {
+  const p = ptyLogPath(run_id)
+  if (!existsSync(p)) return ''
+  const fd = openSync(p, 'r')
+  try {
+    const size = fstatSync(fd).size, n = Math.min(size, max)
+    const buf = Buffer.alloc(n)
+    readSync(fd, buf, 0, n, size - n)
+    return buf.toString('utf8')
+  } finally { closeSync(fd) }
+}
+
+// Terminal output as SSE: the buffered screen first, then live chunks; 'end' when the run is over.
+app.get('/api/runs/:id/pty', (req, res) => {
+  const r = runRow(req)
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+  res.flushHeaders()
+  const send = d => res.write(`data: ${JSON.stringify(d)}\n\n`)
+  const end = () => { res.write('event: end\ndata: {}\n\n'); res.end() }
+  const stop = watchPty(r.id, d => d === null ? end() : send(d))
+  if (!stop) { send(ptyTail(r.id)); return end() }
+  const beat = setInterval(() => res.write(': ping\n\n'), 25000)
+  req.on('close', () => { clearInterval(beat); stop() })
+})
+
+app.post('/api/runs/:id/pty/input', (req, res) => {
+  const data = req.body?.data
+  if (typeof data !== 'string' || !data || data.length > 64 * 1024) throw fail(400, 'data must be text')
+  ptyInput(runRow(req).id, data)
+  res.json({ ok: true })
+})
+
+app.post('/api/runs/:id/pty/resize', (req, res) => {
+  const cols = Number(req.body?.cols), rows = Number(req.body?.rows)
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 20 || cols > 400 || rows < 5 || rows > 200) throw fail(400, 'bad size')
+  ptyResize(runRow(req).id, cols, rows)
+  res.json({ ok: true })
 })
 
 app.post('/api/runs/:id/send', (req, res) => {

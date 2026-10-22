@@ -1,18 +1,34 @@
 import { spawn, execFile } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { relative, isAbsolute, join } from 'node:path'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, createWriteStream, openSync, fstatSync, statSync, readSync, closeSync } from 'node:fs'
+import pty from '@lydell/node-pty'
 import { all, insert, update, get, run, getAgent, getProject, setAgent, addRunEvent, addInbox, resolveInbox, now, DATA_DIR } from './db.js'
 import { emit } from './bus.js'
 
 // run_id -> live entry. A run outlives its child: interrupt, idle timeout and handoff drop the child and --resume brings it back.
 const live = new Map()
-// MCP run token -> run_id; dies with the run.
+// MCP and hook run token -> run_id; dies with the run.
 const tokens = new Map()
 
 const AGENT_KINDS = ['task', 'review', 'qa']
 const IDLE_MS = 10 * 60 * 1000
 const MAX_STR = 4000
+const PTY_DIR = join(DATA_DIR, 'pty')
+const RING = 1024 * 1024
+const HOOK = join(import.meta.dirname, 'hook.mjs').replaceAll('\\', '/')
+// A parent Claude Code session leaves these in the env; a child that inherits them refuses to nest or stops saving its transcript.
+const MARKERS = /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|SESSION_ID|ENTRYPOINT|EXECPATH|MESSAGING_SOCKET|MESSAGING_TOKEN|SESSION_ATTENDED)|CLAUDE_PID|CLAUDE_EFFORT)$/
+
+// Agent sessions run in a real terminal the owner can watch and type into; the Orchestrator and other parsed runs stay on stream-json.
+// The fake CLI in tests only speaks stream-json.
+const usePty = kind => AGENT_KINDS.includes(kind) && process.env.CREW_TERMINAL !== 'json' && !process.env.CREW_CLAUDE_BIN
+
+function childEnv() {
+  const env = { ...process.env, MCP_TOOL_TIMEOUT: String(60 * 60 * 1000) }
+  for (const k of Object.keys(env)) if (MARKERS.test(k)) delete env[k]
+  return env
+}
 
 // Short live status line for a tool call, e.g. "Edit web/App.jsx" or "Bash npm test".
 export function describe(name, input = {}, cwd) {
@@ -84,19 +100,20 @@ const respond = (e, request_id, response) => write(e, { type: 'control_response'
 
 const syncPending = e => setRun(e, { pending_permission: e.perms.size ? [...e.perms.values()].map(p => p.req) : null })
 
-function onPermission(e, request_id, q) {
+// reply(allow, message) answers the CLI: a control_response on stream-json, the held PermissionRequest hook in a terminal.
+function onPermission(e, request_id, q, reply) {
   const input = q.input || {}
   const summary = describe(q.tool_name, input, e.cwd)
   const verdict = e.opts.permissionPolicy ? e.opts.permissionPolicy(q.tool_name, input) : 'deny'
-  if (verdict === 'allow') return respond(e, request_id, { behavior: 'allow', updatedInput: input })
+  if (verdict === 'allow') return reply(true)
   if (verdict === 'deny') {
     store(e, 'note', { text: `Denied by policy: ${summary}` })
-    return respond(e, request_id, { behavior: 'deny', message: 'Crew policy does not allow this. Do it another way, or say what is missing in your final message.' })
+    return reply(false, 'Crew policy does not allow this. Do it another way, or say what is missing in your final message.')
   }
   const req = { request_id, tool_name: q.tool_name, input: slim(input), summary, at: now() }
   const min = getProject(e.project_id)?.settings.permission_timeout_min || 15
   const timer = setTimeout(() => answerPermission(e.run_id, request_id, false, { message: 'The owner did not answer in time. Continue without it, or ask with crew_ask.' }), min * 60000)
-  e.perms.set(request_id, { req, timer })
+  e.perms.set(request_id, { req, timer, reply })
   syncPending(e)
   store(e, 'control_request', req)
   const who = getAgent(e.agent_id)?.name || e.kind
@@ -163,7 +180,9 @@ function onLine(e, line) {
   } else if (m.type === 'result') {
     onResult(e, m)
   } else if (m.type === 'control_request' && m.request?.subtype === 'can_use_tool') {
-    onPermission(e, m.request_id, m.request)
+    const input = m.request.input || {}
+    onPermission(e, m.request_id, m.request, (allow, message) =>
+      respond(e, m.request_id, allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message }))
   } else if (m.type === 'control_response') {
     const id = m.response?.request_id
     e.ctrl.get(id)?.(m.response)
@@ -177,26 +196,42 @@ function onLine(e, line) {
   }
 }
 
+const base = () => `http://127.0.0.1:${process.env.PORT || 5190}`
+
+// In a terminal there is no stdio control channel: hooks and the status line call back into the server instead.
+function hookSettings(e) {
+  const cmd = kind => `node "${HOOK}" ${base()}/hook/${e.token} ${kind}`
+  const min = getProject(e.project_id)?.settings.permission_timeout_min || 15
+  const on = timeout => [{ matcher: '*', hooks: [{ type: 'command', command: cmd('hook'), timeout }] }]
+  return {
+    // The CLI's own timeout outlasts ours, so the owner's answer or our timeout denial always lands.
+    hooks: { PermissionRequest: on(min * 60 + 60), Stop: on(30), UserPromptSubmit: on(30) },
+    statusLine: { type: 'command', command: cmd('status') },
+  }
+}
+
 function args(e, resume) {
-  const o = e.opts
-  const a = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--replay-user-messages',
-    '--setting-sources', 'project', '--strict-mcp-config', '--permission-prompt-tool', 'stdio',
-    '--model', o.model || 'sonnet', '--effort', o.effort || 'medium', '--permission-mode', o.permissionMode || 'dontAsk']
+  const o = e.opts, term = e.engine === 'pty'
+  const a = term ? [] : ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
+    '--replay-user-messages', '--permission-prompt-tool', 'stdio']
+  a.push('--setting-sources', 'project', '--strict-mcp-config',
+    '--model', o.model || 'sonnet', '--effort', o.effort || 'medium', '--permission-mode', o.permissionMode || 'dontAsk')
   if (e.spFile) a.push('--append-system-prompt-file', e.spFile)
   // Deny rules apply under every permission mode, bypassPermissions included; --disallowedTools is the same list as insurance.
   const deny = o.disallowedTools || []
-  if (deny.length) a.push('--settings', JSON.stringify({ permissions: { deny } }), '--disallowedTools', deny.join(','))
+  const settings = { ...(deny.length && { permissions: { deny } }), ...(term && hookSettings(e)) }
+  if (Object.keys(settings).length) a.push('--settings', JSON.stringify(settings))
+  if (deny.length) a.push('--disallowedTools', deny.join(','))
   // Comma-joined single arg: the flags are variadic and would swallow following args.
   if (o.allowedTools?.length) a.push('--allowedTools', o.allowedTools.join(','))
-  if (e.token) a.push('--mcp-config', JSON.stringify({ mcpServers: { crew: { type: 'http', url: `http://127.0.0.1:${process.env.PORT || 5190}/mcp/${e.token}` } } }))
+  if (o.mcp?.length) a.push('--mcp-config', JSON.stringify({ mcpServers: { crew: { type: 'http', url: `${base()}/mcp/${e.token}` } } }))
   if (resume) a.push('--resume', resume)
+  else if (term) a.push('--session-id', e.session_id)
   return a
 }
 
 function spawnChild(e, text, resume) {
-  // Nested sessions refuse to start when the server itself runs inside Claude Code.
-  const env = { ...process.env, MCP_TOOL_TIMEOUT: String(60 * 60 * 1000) }
-  delete env.CLAUDECODE
+  const env = childEnv()
   const bin = process.env.CREW_CLAUDE_BIN || 'claude'
   const [cmd, pre] = /\.m?js$/.test(bin) ? [process.execPath, [bin]] : [bin, []]
   e.sent = e.replayed = 0
@@ -248,10 +283,201 @@ function detach(e, state) {
   if (e.child) { e.detached = true; killChild(e.child) }
 }
 
+// Terminal engine
+
+const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)|\x1b[()][0-9A-Za-z]|\x1b[=>78]/g
+
+function spawnPty(e, text, resume) {
+  e.cost_done += e.cost_now
+  e.cost_now = 0
+  e.ready = false
+  e.queue = text ? [text] : []
+  // shortcut: the native installer's claude.exe; an npm install (claude.cmd) needs CREW_CLAUDE_PTY_BIN set to a runnable path.
+  const bin = process.env.CREW_CLAUDE_PTY_BIN || (process.platform === 'win32' ? 'claude.exe' : 'claude')
+  let p
+  try { p = pty.spawn(bin, args(e, resume), { name: 'xterm-256color', cols: e.cols, rows: e.rows, cwd: e.cwd, env: childEnv() }) } catch (err) { return finish(e, null, err.message) }
+  e.child = p
+  if (resume) output(e, `\r\n\x1b[2m--- session resumed ---\x1b[0m\r\n`)
+  // The first status line means the input box is drawn; a CLI that never draws one still gets its prompt.
+  e.readyTimer = setTimeout(() => ready(e), 20000)
+  p.onData(d => output(e, d))
+  p.onExit(({ exitCode }) => {
+    if (e.child !== p) return
+    e.child = null
+    clearTimeout(e.readyTimer)
+    readTranscript(e)
+    if (e.detached && !e.killed) { e.detached = false; return }
+    if (!e.result) e.stderr = e.ring.slice(-8000).replace(ANSI, '').replace(/\s+\n/g, '\n').trim().slice(-2000)
+    finish(e, exitCode)
+  })
+}
+
+function output(e, d) {
+  e.ring = (e.ring + d).slice(-RING)
+  e.log ??= (mkdirSync(PTY_DIR, { recursive: true }), createWriteStream(ptyLogPath(e.run_id), { flags: 'a' }))
+  e.log.write(d)
+  for (const w of e.watchers) w(d)
+}
+
+function ready(e) {
+  if (e.ready) return
+  e.ready = true
+  clearTimeout(e.readyTimer)
+  for (const t of e.queue.splice(0)) paste(e, t)
+}
+
+// Bracketed paste keeps multi-line prompts in one message; long ones collapse to "[Pasted text]" in the box and still go in whole.
+function paste(e, text) {
+  if (!e.ready) return e.queue.push(text)
+  e.typing = (e.typing || Promise.resolve()).then(() => new Promise(res => {
+    e.child?.write(`\x1b[200~${text}\x1b[201~`)
+    setTimeout(() => { e.child?.write('\r'); setTimeout(res, 300) }, 300)
+  }))
+}
+
+// The session jsonl has the same message shapes as stream-json; it feeds run_events, last_event and token counts.
+function readTranscript(e) {
+  if (!e.jsonl) return
+  let fd
+  try { fd = openSync(e.jsonl, 'r') } catch { return }
+  try {
+    const size = fstatSync(fd).size
+    if (size <= e.offset) return
+    const buf = Buffer.alloc(size - e.offset)
+    readSync(fd, buf, 0, buf.length, e.offset)
+    // Only whole lines: a line still being written stays for the next read.
+    const end = buf.lastIndexOf(10)
+    if (end < 0) return
+    e.offset += end + 1
+    for (const l of buf.subarray(0, end).toString('utf8').split('\n')) transcriptLine(e, l)
+  } finally { closeSync(fd) }
+}
+
+function transcriptLine(e, line) {
+  let m
+  try { m = JSON.parse(line) } catch { return }
+  const msg = m.message || {}
+  if (m.type === 'assistant') {
+    // One API message is written as one line per content block, each with the usage so far; count each message once, at its latest.
+    const u = msg.usage
+    if (u && msg.id) {
+      const prev = e.usage.get(msg.id) || { i: 0, o: 0 }
+      const cur = { i: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), o: u.output_tokens || 0 }
+      e.input_tokens += cur.i - prev.i
+      e.output_tokens += cur.o - prev.o
+      e.usage.set(msg.id, cur)
+      update('runs', e.run_id, { input_tokens: e.input_tokens, output_tokens: e.output_tokens })
+    }
+    for (const c of msg.content || []) {
+      if (c.type === 'text' && c.text) e.lastText = c.text
+      if (c.type === 'tool_use') update('runs', e.run_id, { last_event: describe(c.name, c.input, e.cwd) })
+    }
+    const content = (msg.content || []).filter(c => c.type !== 'thinking' || c.thinking)
+    if (content.length) store(e, 'assistant', { content })
+    throttledEmit(e)
+  } else if (m.type === 'user' && Array.isArray(msg.content)) store(e, 'user', { content: msg.content })
+}
+
+function status(e, b) {
+  ready(e)
+  const c = b.cost?.total_cost_usd
+  if (typeof c === 'number' && c !== e.cost_now) {
+    e.cost_now = c
+    update('runs', e.run_id, { cost_usd: e.cost_done + c })
+    throttledEmit(e)
+  }
+  const w = b.rate_limits?.five_hour
+  if (typeof w?.used_percentage === 'number' && w.used_percentage !== e.limit) {
+    e.limit = w.used_percentage
+    const value = JSON.stringify({ utilization: w.used_percentage / 100, resetsAt: w.resets_at ? new Date(w.resets_at * 1000).toISOString() : null, at: now() })
+    run('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'rate_limit', value)
+  }
+  const a = getAgent(e.agent_id)
+  return `Agent Crew: ${a?.name || e.kind}, run ${e.run_id}${e.task_id ? `, task ${e.task_id}` : ''}`
+}
+
+function turnEnd(e, b) {
+  readTranscript(e)
+  if (typeof b.last_assistant_message === 'string' && b.last_assistant_message) e.lastText = b.last_assistant_message
+  e.turn++
+  store(e, 'result', { subtype: 'success', is_error: false, result: e.lastText, input_tokens: e.input_tokens, output_tokens: e.output_tokens, cost_usd: e.cost_done + e.cost_now })
+  setRun(e, { turn: e.turn, input_tokens: e.input_tokens, output_tokens: e.output_tokens, cost_usd: e.cost_done + e.cost_now })
+  // The owner has the keyboard: their turns never end the run, Hand back does.
+  if (e.state === 'handed_off') return
+  if (e.keepOpen) {
+    if (e.state === 'running') setState(e, 'waiting')
+    clearTimeout(e.idleTimer)
+    e.idleTimer = setTimeout(() => { if (e.child) detach(e, 'paused') }, IDLE_MS).unref()
+    return
+  }
+  // Messages typed during the turn are submitted right after it; a new prompt (UserPromptSubmit) cancels the end.
+  clearTimeout(e.endTimer)
+  e.endTimer = setTimeout(() => {
+    e.result = { result: e.lastText, is_error: false }
+    if (e.child) killChild(e.child)
+    else finish(e, 0)
+  }, 2500)
+}
+
+// Called by server/hook.mjs for every hook and status line refresh of a terminal run. Returns what the hook prints.
+export function hookEvent(token, kind, b = {}) {
+  const e = live.get(tokens.get(token))
+  if (!e || e.engine !== 'pty') return kind === 'status' ? '' : {}
+  // On --resume the file already holds earlier turns; they belong to earlier runs.
+  if (!e.jsonl && typeof b.transcript_path === 'string') {
+    e.jsonl = b.transcript_path
+    try { e.offset = statSync(e.jsonl).size } catch { e.offset = 0 }
+  }
+  if (kind === 'status') return status(e, b)
+  if (b.hook_event_name === 'UserPromptSubmit') {
+    clearTimeout(e.endTimer)
+    if (e.state === 'waiting') setState(e, 'running')
+  } else if (b.hook_event_name === 'Stop') turnEnd(e, b)
+  else if (b.hook_event_name === 'PermissionRequest') {
+    return new Promise(resolve => onPermission(e, `perm_${++e.ctrlN}`, { tool_name: b.tool_name, input: b.tool_input }, (allow, message) =>
+      resolve({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: allow ? { behavior: 'allow' } : { behavior: 'deny', message } } })))
+  }
+  return {}
+}
+
+export const ptyLogPath = run_id => join(PTY_DIR, `run-${run_id}.log`)
+
+// Live terminal: size, the buffered screen, then output chunks (strings) and size changes ({cols, rows}); null at the end.
+// Returns an unsubscribe, or null when the run has no live terminal.
+export function watchPty(run_id, fn) {
+  const e = live.get(run_id)
+  if (!e || e.engine !== 'pty') return null
+  fn({ cols: e.cols, rows: e.rows })
+  fn(e.ring)
+  e.watchers.add(fn)
+  return () => e.watchers.delete(fn)
+}
+
+// Keystrokes from the browser; only while the owner has taken over, so a stray tap never reaches a working agent.
+export function ptyInput(run_id, data) {
+  const e = liveRun(run_id)
+  if (e.engine !== 'pty' || !e.child) throw Object.assign(new Error('That run has no live terminal'), { status: 409 })
+  if (e.state !== 'handed_off') throw Object.assign(new Error('Take over first to type in this terminal'), { status: 409 })
+  e.child.write(data)
+}
+
+export function ptyResize(run_id, cols, rows) {
+  const e = liveRun(run_id)
+  if (e.engine !== 'pty') return
+  if (cols === e.cols && rows === e.rows) return
+  e.cols = cols
+  e.rows = rows
+  try { e.child?.resize(cols, rows) } catch {}
+  for (const w of e.watchers) w({ cols, rows })
+}
+
 function finish(e, code, spawnError) {
   if (e.done) return
   e.done = true
-  for (const t of [e.emitTimer, e.deltaTimer, e.idleTimer]) clearTimeout(t)
+  for (const t of [e.emitTimer, e.deltaTimer, e.idleTimer, e.readyTimer, e.endTimer]) clearTimeout(t)
+  clearInterval(e.tailTimer)
+  e.log?.end()
+  for (const w of e.watchers) w(null)
   for (const p of e.perms.values()) clearTimeout(p.timer)
   live.delete(e.run_id)
   if (e.token) tokens.delete(e.token)
@@ -273,16 +499,24 @@ function finish(e, code, spawnError) {
 // Resolves once when the run ends for good, however many times its process was respawned.
 export function runClaude(opts) {
   const { project_id, agent_id = null, task_id = null, kind, cwd, prompt, systemPrompt, resume = null } = opts
-  const run_id = insert('runs', { project_id, agent_id, task_id, kind })
+  const engine = usePty(kind) ? 'pty' : 'json'
+  const run_id = insert('runs', { project_id, agent_id, task_id, kind, terminal: engine === 'pty' ? 1 : 0 })
   if (agent_id && AGENT_KINDS.includes(kind) && getAgent(agent_id)?.status !== 'paused') setAgent(agent_id, { status: 'working' })
   emit('run', project_id, runRow(run_id))
   const e = {
     run_id, project_id, agent_id, task_id, kind, cwd, opts, child: null, seq: 0, state: 'running', session_id: resume, turn: 0,
     input_tokens: 0, output_tokens: 0, cost_done: 0, cost_now: 0, result: null, lastText: '', stderr: '', sent: 0, replayed: 0,
     keepOpen: !!opts.keepOpen, ctrl: new Map(), ctrlN: 0, perms: new Map(), delta: '', lastEmit: 0,
+    engine, cols: 120, rows: 36, ring: '', watchers: new Set(), usage: new Map(), offset: 0,
   }
   live.set(run_id, e)
-  if (opts.mcp?.length) { e.token = randomBytes(24).toString('hex'); tokens.set(e.token, run_id) }
+  // Terminal runs need the token for their hooks even without crew tools.
+  if (opts.mcp?.length || engine === 'pty') { e.token = randomBytes(24).toString('hex'); tokens.set(e.token, run_id) }
+  if (engine === 'pty') {
+    e.session_id ??= randomUUID()
+    update('runs', run_id, { session_id: e.session_id })
+    e.tailTimer = setInterval(() => readTranscript(e), 1000).unref()
+  }
   // Via a file: Windows caps a command line at about 32k chars and prompts with CLAUDE.md get long.
   if (systemPrompt) {
     e.spFile = join(DATA_DIR, 'prompts', `run-${run_id}.txt`)
@@ -290,7 +524,7 @@ export function runClaude(opts) {
     writeFileSync(e.spFile, systemPrompt)
   }
   store(e, 'prompt', { text: prompt ?? '' })
-  return new Promise(resolve => { e.resolve = resolve; spawnChild(e, prompt ?? '', resume) })
+  return new Promise(resolve => { e.resolve = resolve; (engine === 'pty' ? spawnPty : spawnChild)(e, prompt ?? '', resume) })
 }
 
 const liveRun = run_id => {
@@ -307,13 +541,15 @@ export function sendToRun(run_id, text, { priority = 'next', from = 'owner' } = 
   const e = liveRun(run_id)
   store(e, from === 'owner' ? 'owner' : 'note', { text })
   clearTimeout(e.idleTimer)
+  clearTimeout(e.endTimer)
   if (e.child) {
     if (e.state !== 'running') setState(e, 'running')
-    userMsg(e, text, priority)
+    if (e.engine === 'pty') paste(e, text)
+    else userMsg(e, text, priority)
   } else {
     if (!e.session_id) throw Object.assign(new Error('No session to resume'), { status: 409 })
     setState(e, 'running')
-    spawnChild(e, text, e.session_id)
+    ;(e.engine === 'pty' ? spawnPty : spawnChild)(e, text, e.session_id)
   }
 }
 
@@ -323,6 +559,8 @@ export async function interruptRun(run_id) {
   setState(e, 'paused')
   store(e, 'note', { text: 'Paused' })
   if (!e.child) return
+  // Esc is the terminal's own interrupt; the process and session stay.
+  if (e.engine === 'pty') { clearTimeout(e.endTimer); return e.child.write('') }
   // No answer means the CLI is stuck; the session file survives, so --resume picks it up.
   const r = await control(e, { subtype: 'interrupt' }, 5000)
   // Interrupt drops queued messages, so none are still owed a turn.
@@ -340,6 +578,15 @@ export function resumeRun(run_id, text = 'Continue the task where you left off.'
 // The owner continues the session in a terminal; two processes on one session would corrupt it, so ours stops.
 export async function handoffRun(run_id) {
   const e = liveRun(run_id)
+  // A terminal run is already a terminal: the owner just gets the keyboard, in the browser.
+  if (e.engine === 'pty') {
+    clearTimeout(e.endTimer)
+    clearTimeout(e.idleTimer)
+    setState(e, 'handed_off')
+    store(e, 'note', { text: 'The owner took the keyboard' })
+    if (!e.child) spawnPty(e, null, e.session_id)
+    return { terminal: true, cwd: e.cwd, session_id: e.session_id, command: `claude --resume ${e.session_id}` }
+  }
   if (e.child) await interruptRun(run_id)
   detach(e, 'handed_off')
   store(e, 'note', { text: 'Handed off to the owner' })
@@ -352,7 +599,7 @@ export function answerPermission(run_id, request_id, allow, { message } = {}) {
   if (!p) throw Object.assign(new Error('That permission request is no longer open'), { status: 409 })
   clearTimeout(p.timer)
   e.perms.delete(request_id)
-  respond(e, request_id, allow ? { behavior: 'allow', updatedInput: p.req.input } : { behavior: 'deny', message: message || 'The owner denied this. Continue without it.' })
+  p.reply(allow, message || 'The owner denied this. Continue without it.')
   store(e, 'note', { text: `${allow ? 'Allowed' : 'Denied'}: ${p.req.summary}${message && !allow ? ` (${message})` : ''}` })
   syncPending(e)
   closePermissionItems(run_id, request_id)
@@ -365,7 +612,7 @@ export const getRunEvents = (run_id, { after = 0, tail } = {}) => tail
 export function runForToken(token) {
   const id = tokens.get(token)
   const e = id && live.get(id)
-  return e ? { run_id: e.run_id, project_id: e.project_id, agent_id: e.agent_id, task_id: e.task_id, kind: e.kind, tools: e.opts.mcp } : null
+  return e ? { run_id: e.run_id, project_id: e.project_id, agent_id: e.agent_id, task_id: e.task_id, kind: e.kind, tools: e.opts.mcp || [] } : null
 }
 
 // stopped: whoever kills already put the task where it belongs, so callers must not count a failed attempt.

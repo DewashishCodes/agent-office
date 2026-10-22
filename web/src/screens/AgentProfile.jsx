@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, useData } from '../api.js'
 import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
-import Transcript from '../components/Transcript.jsx'
+import Terminal from '../components/Terminal.jsx'
 
 const PERMS = [['open_pr', 'Open PRs'], ['comment', 'Comment on PRs'], ['run_tests', 'Run tests'], ['merge', 'Merge'], ['autonomous', 'Autonomous (never asks before commands)']]
 const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
@@ -82,7 +82,7 @@ export default function AgentProfile({ pid, id }) {
           {lastRun && <Badge status={lastRun.status} />}
         </div>
         <p className="small">{current ? <>On: {current.title}</> : <span className="muted">{a.status === 'paused' ? 'Paused' : 'No current task'}</span>}</p>
-        <Transcript runId={lastRun?.id} />
+        <Terminal run={lastRun} />
         {lastRun?.status === 'running' && <a className="small" href="#/wall">Pause, message or take over on the wall</a>}
       </section>
 
