@@ -238,6 +238,23 @@ async function restackNow(path, base_sha, branch, default_branch) {
 }
 export const restack = serial(restackNow)
 
+// Hotfix: the task's own commits (base_sha..branch) go on top of the project branch so the push is a fast-forward.
+// Returns the new base. Like restack, but the task branch itself is never pushed.
+async function rebaseOntoNow(path, base_sha, branch, target) {
+  await git(path, 'fetch', 'origin')
+  try { await git(path, 'rebase', '--onto', `origin/${target}`, base_sha, branch) } catch (e) {
+    await git(path, 'rebase', '--abort').catch(() => {})
+    throw new Error(`Rebasing the hotfix onto ${target} conflicted: ${e.message}`)
+  }
+  return git(path, 'rev-parse', `origin/${target}`)
+}
+export const rebaseOnto = serial(rebaseOntoNow)
+
+export async function listBranches(project) {
+  const out = await git(clonePath(project), 'ls-remote', '--heads', 'origin')
+  return out.split('\n').map(l => l.split('refs/heads/')[1]).filter(Boolean).sort()
+}
+
 async function pushToNow(path, ref) {
   await git(path, 'push', 'origin', ref)
 }
