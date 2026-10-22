@@ -11,7 +11,7 @@ import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday
 import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, markOnboarded, cancelOrder, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
+import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
 import { matchAgent } from './rules.js'
@@ -74,8 +74,10 @@ function profileFields(body) {
   return body
 }
 
+// A retry goes ahead without dependencies the owner canceled; they would never finish.
 function retryTask(id) {
-  const t = setTask(id, { attempts: 0, notes: '', status: 'planned' })
+  const deps = getTask(id).depends_on.filter(d => getTask(d)?.status !== 'canceled')
+  const t = setTask(id, { attempts: 0, notes: '', status: 'planned', depends_on: deps })
   kick()
   return t
 }
@@ -303,6 +305,21 @@ app.post('/api/orders/:id/cancel', (req, res) => {
   res.json({ ok: true })
 })
 
+// Merge every PR of the order in the order the integration check asked for (its merge cards), stopping at the first failure.
+app.post('/api/orders/:id/merge', async (req, res) => {
+  const o = order(req)
+  const cards = all(`SELECT task_id FROM inbox WHERE order_id = ? AND kind = 'merge' AND task_id IS NOT NULL ORDER BY id`, o.id).map(i => i.task_id)
+  const tasks = all('SELECT id FROM tasks WHERE order_id = ? AND pr_number IS NOT NULL AND merged = 0 AND status = ? ORDER BY id', o.id, 'done').map(t => t.id)
+  const ordered = [...cards.filter(id => tasks.includes(id)), ...tasks.filter(id => !cards.includes(id))]
+  const merged = []
+  for (const id of ordered) {
+    try { await mergeTask(id); merged.push(id) } catch (e) {
+      return res.status(409).json({ error: `Merged ${merged.length} of ${ordered.length}. "${getTask(id).title}" failed: ${e.message}`, merged })
+    }
+  }
+  res.json({ merged })
+})
+
 app.post('/api/orders/:id/reject', async (req, res) => {
   await rejectPlan(order(req).id)
   res.json({ ok: true })
@@ -345,6 +362,11 @@ app.get('/api/tasks/:id', (req, res) => {
     activity: all('SELECT * FROM activity WHERE task_id = ? ORDER BY id DESC', t.id),
     runs: all('SELECT * FROM runs WHERE task_id = ? ORDER BY id DESC', t.id),
   })
+})
+
+app.post('/api/tasks/:id/cancel', (req, res) => {
+  const t = found(getTask(int(req.params.id)), 'task')
+  try { res.json(cancelTask(t.id)) } catch (e) { throw fail(409, e.message) }
 })
 
 app.post('/api/tasks/:id/retry', (req, res) => {
@@ -634,7 +656,7 @@ app.get('/api/projects/:id/inbox', (req, res) => {
   const p = project(req), { status } = req.query
   if (status && status !== 'open' && status !== 'done') throw fail(400, 'status must be open or done')
   res.json(status
-    ? all('SELECT * FROM inbox WHERE project_id = ? AND status = ? ORDER BY id DESC', p.id, status)
+    ? all(`SELECT * FROM inbox WHERE project_id = ? AND status = ? ORDER BY id ${status === 'open' ? 'ASC' : 'DESC'}`, p.id, status)
     : all('SELECT * FROM inbox WHERE project_id = ? ORDER BY id DESC', p.id))
 })
 
@@ -659,9 +681,7 @@ app.post('/api/inbox/:id/action', async (req, res) => {
   } else if (key === 'merge:merge') {
     const p = getProject(item.project_id)
     if (item.task_id) {
-      const t = found(getTask(item.task_id), 'task')
-      await mergePR(p, found(t.pr_number, 'pull request'))
-      markMerged(t.id)
+      try { await mergeTask(found(getTask(item.task_id), 'task').id) } catch (e) { throw fail(409, e.message) }
     } else {
       await mergePR(p, found(p.onboarding_pr, 'onboarding pull request'))
       markOnboarded(p.id)

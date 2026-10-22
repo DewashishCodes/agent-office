@@ -2,11 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { api, useEvents } from '../api.js'
 import { tokens } from '../ui.jsx'
 
-// Markdown-lite: fenced blocks and inline code only.
+// Markdown-lite: fenced blocks, inline code and bold only.
 export function Md({ text }) {
   return String(text).split(/```[^\n]*\n?/).map((part, i) => i % 2
     ? <pre key={i} className="code">{part.replace(/\n$/, '')}</pre>
-    : <span key={i}>{part.split(/(`[^`\n]+`)/).map((s, j) => s.startsWith('`') && s.endsWith('`') && s.length > 2 ? <code key={j}>{s.slice(1, -1)}</code> : s)}</span>)
+    : <span key={i}>{part.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).map((s, j) =>
+      s.startsWith('`') && s.endsWith('`') && s.length > 2 ? <code key={j}>{s.slice(1, -1)}</code>
+      : s.startsWith('**') && s.endsWith('**') && s.length > 4 ? <b key={j}>{s.slice(2, -2)}</b> : s)}</span>)
 }
 
 // "C:/a/b/crew-t4/web/src/App.jsx" -> "web/src/App.jsx": worktree paths are long and the prefix says nothing.

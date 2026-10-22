@@ -111,14 +111,14 @@ export function Tile({ a, expanded, onExpand, onQuick }) {
       )}
       <div className="actions">
         {liveRun && (state === 'running' || state === 'waiting') && <Button small disabled={busy} onClick={() => post('interrupt')}>Pause</Button>}
+        {liveRun && <ConfirmButton small variant="danger" confirm={r.task_id ? 'Stop this task' : 'Stop this run'} disabled={busy} onConfirm={() => post('kill')}>Stop</ConfirmButton>}
         {liveRun && state === 'paused' && <Button small variant="primary" disabled={busy} onClick={() => post('resume')}>Resume</Button>}
         {liveRun && state === 'handed_off' && <Button small variant="primary" disabled={busy} onClick={() => post('resume', { text: HAND_BACK })}>Hand back</Button>}
         {onExpand && <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>}
-        {(liveRun || a.owned_paths?.length > 0) && (
+        {((liveRun && r.session_id && state !== 'handed_off') || a.owned_paths?.length > 0) && (
           <More>
             {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over the keyboard</Button>}
             {a.owned_paths?.length > 0 && <Button variant="ghost" onClick={onQuick}>Quick task</Button>}
-            {liveRun && <ConfirmButton variant="ghost" confirm="Stop this run" disabled={busy} onConfirm={() => post('kill')}>Kill run</ConfirmButton>}
           </More>
         )}
       </div>

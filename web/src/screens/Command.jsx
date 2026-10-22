@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
+import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
 
 export default function Command({ pid, running, floors, floor: saved, setFloor }) {
@@ -73,12 +74,7 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
           </li>
         ))}
       </ol>
-      {thinking && (
-        <p className="thinking" role="status">
-          <span className="pulse" aria-hidden="true" /> {leadName} is thinking
-          {orchRun?.last_event && <span className="muted mono"> {orchRun.last_event}</span>}
-        </p>
-      )}
+      {thinking && <Working text={`${leadName} is thinking`} lastEvent={orchRun?.last_event} since={orchRun?.started_at} />}
       <form className="composer" onSubmit={send}>
         <label className="sr-only" htmlFor="order-text">Order or question for {leadName}</label>
         <textarea id="order-text" rows="2" placeholder={`Order or question for ${leadName} (Ctrl+Enter sends)`} value={text}
@@ -125,6 +121,7 @@ function PlanCard({ orderId, pid, agents }) {
       {tasks.length > 0 && (
         <p className="muted small">{done} of {tasks.length} tasks done. <a href={`#/board/${orderId}`}>Open on board</a></p>
       )}
+      {open && plan.tasks?.length > 1 && <p className="muted small">{shape(plan.tasks)}</p>}
       <ol className="plan-tasks">
         {(editing || plan.tasks || []).map((t, i) => editing ? (
           <li key={t.key} className="plan-task edit">
@@ -187,4 +184,22 @@ function PlanCard({ orderId, pid, agents }) {
       <ErrorText error={actError} />
     </article>
   )
+}
+
+// How parallel a plan is: tasks in the same wave have no dependency between them and can run at once.
+function shape(tasks) {
+  const keys = new Set(tasks.map(t => t.key))
+  const wave = {}
+  const level = (t, seen = new Set()) => {
+    if (wave[t.key] != null) return wave[t.key]
+    if (seen.has(t.key)) return 0
+    seen.add(t.key)
+    const deps = (t.depends_on || []).filter(k => keys.has(k)).map(k => level(tasks.find(x => x.key === k), seen))
+    return (wave[t.key] = deps.length ? Math.max(...deps) + 1 : 0)
+  }
+  tasks.forEach(t => level(t))
+  const waves = Math.max(...Object.values(wave)) + 1
+  const widest = Math.max(...Object.values(Object.groupBy(tasks, t => wave[t.key])).map(w => w.length))
+  const agents = new Set(tasks.map(t => t.agent || t.role)).size
+  return `${tasks.length} tasks for ${agents} agent${agents === 1 ? '' : 's'}, in ${waves} step${waves === 1 ? '' : 's'}: at most ${widest} at once.${waves === tasks.length ? ' Fully chained, so nothing runs in parallel.' : ''}`
 }

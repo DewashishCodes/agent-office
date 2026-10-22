@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
 import { Button, ErrorText, ago, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
+import Working from '../components/Working.jsx'
 
 const WHO = { user: 'You', onboarding: 'Onboarding', system: 'Crew' }
 
 // The onboarding interview, then the office proposal to approve.
 export default function Onboarding({ pid, project, floors }) {
   const [data, , error] = useData(`/projects/${pid}/onboarding`, ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'message' && ev.data.channel === 'onboarding')))
-  const [busyRun, setBusyRun] = useState(false)
-  useEvents(ev => { if (ev.project_id === pid && ev.type === 'run' && ev.data.kind === 'onboarding') setBusyRun(ev.data.status === 'running') })
+  // The live onboarding run, from the project detail on arrival and from run events after that.
+  const [busyRun, setBusyRun] = useState(() => project?.running_runs?.find(r => r.kind === 'onboarding') || null)
+  useEvents(ev => { if (ev.project_id === pid && ev.type === 'run' && ev.data.kind === 'onboarding') setBusyRun(ev.data.status === 'running' ? ev.data : null) })
   const [text, setText] = useState('')
   const [run, busy, sendError] = useAction()
   const end = useRef()
@@ -22,7 +24,7 @@ export default function Onboarding({ pid, project, floors }) {
     e?.preventDefault()
     const t = text.trim()
     if (!t) return
-    run(async () => { await api(`/projects/${pid}/onboarding`, { method: 'POST', body: { text: t } }); setText(''); setBusyRun(true) })
+    run(async () => { await api(`/projects/${pid}/onboarding`, { method: 'POST', body: { text: t } }); setText(''); setBusyRun(r => r || {}) })
   }
   const rerun = () => run(() => api(`/projects/${pid}/onboard`, { method: 'POST' }))
 
@@ -38,7 +40,7 @@ export default function Onboarding({ pid, project, floors }) {
           </li>
         ))}
       </ol>
-      {busyRun && <p className="thinking" role="status"><span className="pulse" aria-hidden="true" /> Onboarding is reading and thinking</p>}
+      {(busyRun || status === 'running') && <Working text={status === 'running' ? 'Writing CLAUDE.md, the playbook and the brief' : 'Onboarding is reading and thinking'} lastEvent={busyRun?.last_event} since={busyRun?.started_at} />}
       {status === 'proposed' && data?.proposal && <Proposal pid={pid} proposal={data.proposal} floors={floors} />}
       {talking ? (
         <form className="composer" onSubmit={send}>

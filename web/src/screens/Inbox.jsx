@@ -63,6 +63,10 @@ export function Item({ i }) {
       {open && i.kind === 'merge' && (
         <div className="actions">
           <ConfirmButton variant="primary" confirm="Squash and merge" disabled={busy} onConfirm={() => act('merge')}>Merge</ConfirmButton>
+          {i.task_id && i.order_id && (
+            <ConfirmButton confirm="Merge every PR of this order, in order" disabled={busy}
+              onConfirm={() => run(() => api(`/orders/${i.order_id}/merge`, { method: 'POST' }))}>Merge whole order</ConfirmButton>
+          )}
           <Button variant="ghost" disabled={busy} onClick={() => act('dismiss')}>Dismiss</Button>
         </div>
       )}

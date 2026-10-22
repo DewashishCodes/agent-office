@@ -112,6 +112,7 @@ textarea { resize: vertical; }
 textarea.mono { font-size: 13px; }
 input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
 .check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.check > input { flex: 0 0 auto; }
 fieldset.perms { border: 1px solid var(--border); border-radius: 8px; padding: 4px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; padding: 0 4px; }
 
@@ -362,3 +363,7 @@ h1 .count { vertical-align: middle; }
 .msg.onboarding .meta, .msg.system .meta { color: var(--accent); }
 .proposal h3 { display: flex; align-items: center; gap: 6px; }
 .onboard-banner { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+
+/* An agent working on a reply: its Clawd, what it does, how long. */
+.working { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 4px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.working img { flex: 0 0 auto; image-rendering: pixelated; }

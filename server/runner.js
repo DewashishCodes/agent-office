@@ -272,8 +272,36 @@ function spawnChild(e, text, resume) {
 
 export function killChild(child) {
   if (!child) return
-  if (process.platform === 'win32') execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], () => {})
-  else child.kill('SIGKILL')
+  if (process.platform !== 'win32') return child.kill('SIGKILL')
+  // A Windows pty can report pid 0 (seen on a run started next to another one): taskkill /pid 0 misses silently and the
+  // run never ends. The pty's own kill() closes its console and the process in it.
+  if (child.pid) execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], () => {})
+  else try { child.kill() } catch {}
+}
+
+// Dev servers an agent left running in the background outlive its session; on Windows they lose their parent, so a tree
+// kill misses them. When a run in a task worktree ends, any process whose command line points into that folder goes too.
+export function reapFolder(dir) {
+  const needle = dir.replaceAll('\\', '/').toLowerCase()
+  const hit = cmd => typeof cmd === 'string' && cmd.replaceAll('\\', '/').toLowerCase().includes(needle)
+  const kill = pid => { if (pid && pid !== process.pid) killChild({ pid, kill: () => process.kill(pid, 'SIGKILL') }) }
+  if (process.platform === 'win32') {
+    execFile('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress'],
+      { windowsHide: true, maxBuffer: 64 * 1024 * 1024 }, (err, out) => {
+        if (err) return
+        let list
+        try { list = [].concat(JSON.parse(out)) } catch { return }
+        for (const p of list) if (hit(p.CommandLine)) kill(p.ProcessId)
+      })
+  } else execFile('ps', ['-eo', 'pid=,args='], (err, out) => {
+    if (!err) for (const line of out.split('\n')) { const m = /^\s*(\d+)\s+(.*)$/.exec(line); if (m && hit(m[2])) kill(Number(m[1])) }
+  })
+}
+
+// Ends the run even when the process outlives the kill, so a finished task never waits on a dead terminal.
+function endChild(e) {
+  killChild(e.child)
+  e.endTimer = setTimeout(() => finish(e, null), 10000)
 }
 
 // Drops the child but keeps the run; resumeRun or sendToRun respawns with --resume.
@@ -437,7 +465,7 @@ function turnEnd(e, b) {
   clearTimeout(e.endTimer)
   e.endTimer = setTimeout(() => {
     e.result = { result: e.lastText, is_error: false }
-    if (e.child) killChild(e.child)
+    if (e.child) endChild(e)
     else finish(e, 0)
   }, 2500)
 }
@@ -506,6 +534,7 @@ function finish(e, code, spawnError) {
   if (e.token) tokens.delete(e.token)
   if (e.spFile) rmSync(e.spFile, { force: true })
   closePermissionItems(e.run_id)
+  if (/[\\/]worktrees[\\/]/.test(e.cwd || '')) reapFolder(e.cwd)
   const r = e.result
   const ok = !!r && !r.is_error && !e.killed
   const text = r?.result ?? (e.lastText || spawnError || e.stderr.trim() || `claude exited with code ${code}`)
@@ -644,7 +673,7 @@ export function killRun(run_id, { stopped = true } = {}) {
   if (!e) return
   e.killed = true
   e.stopped = stopped
-  if (e.child) killChild(e.child)
+  if (e.child) endChild(e)
   else finish(e, null)
 }
 

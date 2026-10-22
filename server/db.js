@@ -1,10 +1,13 @@
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { emit } from './bus.js'
 
 export const DATA_DIR = process.env.CREW_DATA_DIR || join(import.meta.dirname, '..', 'data')
 mkdirSync(DATA_DIR, { recursive: true })
+// Clones and worktrees live under DATA_DIR; without this a project with no package.json of its own would inherit the
+// crew's "type": "module" and load its CommonJS as ES modules.
+if (!existsSync(join(DATA_DIR, 'package.json'))) writeFileSync(join(DATA_DIR, 'package.json'), '{}\n')
 
 export const db = new DatabaseSync(process.env.CREW_DB || join(DATA_DIR, 'crew.db'))
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')

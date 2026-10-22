@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
 import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState } from './github.js'
+import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, closePR, mergePR, restack } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -51,6 +51,8 @@ export async function comment(project, task, body) {
 // One failure path for gate, session, Reviewer and QA failures.
 export function failTask(task_id, notes) {
   const t = getTask(task_id)
+  // A late failure from a canceled task must not bring it back.
+  if (t.status === 'canceled') return
   const attempts = t.attempts + 1
   const blocked = attempts >= MAX_ATTEMPTS
   setTask(task_id, { attempts, notes, status: blocked ? 'blocked' : 'planned' })
@@ -80,6 +82,7 @@ Rules, no exceptions:
 - To try a server, start it in the background and stop it in the same command: PORT=3456 node app.js & sleep 1; curl -s localhost:3456/x; kill %1. Never kill processes by name or with taskkill: the crew itself runs on node.
 - If you changed code, run the relevant tests and build from CLAUDE.md before you finish, and fix what you broke.
 - If the task needs a change outside your paths, do your part and say exactly what is missing in your final message.
+- Do only this task. Other tasks of the same order are listed in the prompt; they are planned for later or for someone else, so never build them early, even in files you own. Work outside your task's files is sent back by the reviewer.
 - End with a short summary: what you changed, how you tested it, anything left open. Agents whose tasks depend on yours get this summary, so name the APIs, files and decisions they need.
 
 Crew tools (MCP server "crew"):
@@ -92,6 +95,7 @@ async function taskPrompt(t, a) {
   const [claude, playbook, brief] = await Promise.all(['CLAUDE.md', '.crew/PLAYBOOK.md', '.crew/BRIEF.md'].map(f => readOpt(join(t.worktree, f))))
   const notes = all('SELECT text FROM agent_notes WHERE agent_id = ? ORDER BY id', a.id).map(n => `- ${n.text}`).join('\n')
   const deps = t.depends_on.map(getTask).filter(Boolean)
+  const siblings = all(`SELECT title, files FROM tasks WHERE order_id = ? AND id != ? AND status NOT IN ('done', 'canceled')`, t.order_id, t.id)
   const messages = takeQueued(a.id)
   const vault = vaultIndex(t.project_id)
   return [
@@ -104,6 +108,7 @@ async function taskPrompt(t, a) {
     `# Your task: ${t.title}\n\n${t.description}`,
     `## Acceptance criteria\n\n${t.acceptance.map(c => `- ${c}`).join('\n') || '- (none given, use the description)'}`,
     t.files.length && `## Files you are expected to touch\n\n${t.files.join('\n')}`,
+    siblings.length && `## Other tasks of this order (not yours now, do not build them)\n\n${siblings.map(s => `- ${s.title}${s.files.length ? ` (${s.files.join(', ')})` : ''}`).join('\n')}`,
     deps.length && `## Already merged into your branch\n\n${deps.map(d => `- ${d.title} (${d.branch})${d.result ? `\n\n  What its agent reported:\n\n${d.result.slice(0, 2000).replace(/^/gm, '  > ')}` : ''}`).join('\n\n')}`,
     t.attempts && t.notes && `## Previous attempt failed (attempt ${t.attempts + 1} now)\n\nYour earlier work is already on this branch. Fix these points:\n\n${t.notes}`,
   ].filter(Boolean).join('\n\n')
@@ -165,11 +170,14 @@ async function runTask(task_id) {
     return failTask(task_id, `These files are outside your owned paths or inside protected paths. Revert every change to them (git checkout ${base_sha} -- <file>, or git rm for new files) and commit:\n${bad.map(f => `- ${f}`).join('\n')}`)
   }
 
+  // Canceled while the run was wrapping up: no PR, no review.
+  if (getTask(task_id).status === 'canceled') return
   await pushBranch(wt.path, branch)
   if (!t.pr_number) {
     const pr = await createPR(project, { branch, title: t.title, body: prBody(t) })
     t = setTask(task_id, { pr_number: pr.number, pr_url: pr.url })
   } else await comment(project, t, `Attempt ${t.attempts + 1} pushed, addressing:\n\n${t.notes}`)
+  if (getTask(task_id).status === 'canceled') return
   t = setTask(task_id, { status: 'in_review' })
   issueStatus(project, t, 'in_review')
   log(project.id, 'pr', `${agent.name} opened PR #${t.pr_number} for "${t.title}"`, { task_id, agent_id: agent.id, order_id: t.order_id, link: t.pr_url })
@@ -283,6 +291,30 @@ export function resumeAgent(agent_id) {
   return a
 }
 
+const pause = ms => new Promise(r => setTimeout(r, ms))
+
+// The owner's merge: a task built on others is restacked onto the default branch first (their squash merges rewrote the
+// commits it carries), then squash merged. GitHub needs a moment to recompute mergeability after a force push.
+export async function mergeTask(task_id) {
+  let t = getTask(task_id)
+  if (t.merged) return t
+  if (!t.pr_number) throw new Error(`"${t.title}" has no pull request`)
+  const project = getProject(t.project_id)
+  if (t.depends_on.length) {
+    const open = t.depends_on.map(getTask).filter(d => d && !d.merged && d.status !== 'canceled')
+    if (open.length) throw new Error(`Merge ${open.map(d => `#${d.pr_number || d.id} "${d.title}"`).join(', ')} first: this PR builds on it.`)
+    if (t.worktree && t.base_sha) t = setTask(t.id, { base_sha: await restack(t.worktree, t.base_sha, t.branch, project.default_branch) })
+  }
+  for (let i = 0; ; i++) {
+    try { await mergePR(project, t.pr_number); break } catch (e) {
+      if (i >= 3 || !t.depends_on.length) throw e
+      await pause(4000)
+    }
+  }
+  markMerged(t.id)
+  return getTask(t.id)
+}
+
 // Shared by the PR poll and the Inbox merge action; idempotent so a merge seen by both is handled once.
 export function markMerged(task_id) {
   const t = getTask(task_id)
@@ -290,7 +322,7 @@ export function markMerged(task_id) {
   setTask(t.id, { merged: 1 })
   log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
-  const left = get('SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0', t.order_id).n
+  const left = get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0 AND status != 'canceled'`, t.order_id).n
   if (!left && !['done', 'canceled'].includes(getOrder(t.order_id).status)) {
     setOrder(t.order_id, { status: 'done' })
     log(t.project_id, 'order', 'Order done: every PR merged', { order_id: t.order_id })
@@ -309,6 +341,29 @@ export function cancelOrder(order_id) {
   setOrder(order_id, { status: 'canceled' })
   log(o.project_id, 'order', `Order canceled: ${o.plan?.summary || o.text}`, { order_id })
   kick()
+}
+
+// The owner drops one task: its run stops, its open PR closes, tasks waiting on it block, the rest of the order carries on.
+export function cancelTask(task_id) {
+  const t = getTask(task_id)
+  if (['done', 'canceled'].includes(t.status) || t.merged) throw new Error(`That task is already ${t.merged ? 'merged' : t.status}`)
+  for (const r of liveRuns()) if (r.task_id === t.id) killRun(r.run_id)
+  setTask(t.id, { status: 'canceled', wait_reason: null })
+  for (const i of all(`SELECT id FROM inbox WHERE status = 'open' AND task_id = ?`, t.id)) resolveInbox(i.id)
+  if (t.pr_number) closePR(getProject(t.project_id), t.pr_number).catch(e => log(t.project_id, 'error', `Closing PR #${t.pr_number} failed: ${e.message}`, { task_id: t.id }))
+  for (const d of all(`SELECT id, depends_on FROM tasks WHERE project_id = ? AND status = 'planned'`, t.project_id)) {
+    if (d.depends_on.includes(t.id)) setTask(d.id, { status: 'blocked', notes: `Depends on "${t.title}", which the owner canceled. Retry to go ahead without it.` })
+  }
+  log(t.project_id, 'task', `Task canceled by the owner: ${t.title}`, { task_id: t.id, order_id: t.order_id })
+  const o = getOrder(t.order_id)
+  const c = get(`SELECT SUM(status NOT IN ('done', 'canceled')) AS open, SUM(status = 'done') AS done, SUM(status = 'done' AND merged = 0) AS unmerged FROM tasks WHERE order_id = ?`, o.id)
+  if (!c.open) {
+    if (!c.done) setOrder(o.id, { status: 'canceled' })
+    else if (o.status === 'in_progress') integrateOrder(o.id).catch(e => log(o.project_id, 'error', `Integration failed: ${e.message}`, { order_id: o.id }))
+    else if (o.status === 'ready_to_merge' && !c.unmerged) setOrder(o.id, { status: 'done' })
+  }
+  kick()
+  return getTask(t.id)
 }
 
 export function markOnboarded(project_id) {
@@ -358,7 +413,7 @@ export function recover() {
   resumeChecks()
   for (const o of all(`SELECT id FROM orders WHERE status = 'planning'`)) setOrder(o.id, { status: 'awaiting_approval' })
   for (const o of all(`SELECT id FROM orders WHERE status = 'in_progress'`)) {
-    const c = get(`SELECT COUNT(*) AS n, SUM(status != 'done') AS open FROM tasks WHERE order_id = ?`, o.id)
+    const c = get(`SELECT COUNT(*) AS n, SUM(status NOT IN ('done', 'canceled')) AS open FROM tasks WHERE order_id = ?`, o.id)
     if (c.n && !c.open) integrateOrder(o.id)
     // Crashed between approve and task creation: offer the plan again.
     if (!c.n) setOrder(o.id, { status: 'awaiting_approval' })

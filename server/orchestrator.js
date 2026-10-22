@@ -68,10 +68,11 @@ ${inFlight(project.id)}
 How to answer the owner:
 1. A question or chat: answer in plain text, short. No json block.
 2. An order that is ambiguous (unclear goal, scope or behavior that would change the plan): ask at most 3 short numbered questions in plain text. No json block.
-3. A clear order: reply with a 1 to 3 sentence summary in plain words, then the plan as one fenced json block, as the last thing in the reply.
+3. A clear order: reply with a 1 to 3 sentence summary in plain words, then the plan as one fenced json block, as the last thing in the reply. Do not state how many tasks or PRs there are; the owner sees the plan itself.
 
 Plan rules:
 - One task = one pull request by one agent. Size S (under an hour), M (a few hours), L (a day). Prefer S and M; split anything bigger.
+- Plan for parallel work: agents work at the same time only on tasks with no dependency between them. Prefer independent tasks over a chain (agree on the interface in the descriptions instead of waiting for code), and spread tasks across the agents who own the files rather than giving most of them to one.
 - "agent" is the exact name of an agent above that owns paths. Several agents can share a role, so always assign by name. Older plans in this chat used a "role" field; that format is retired, always write "agent". Never give tasks to the orchestrator, reviewer or qa agents; every task is reviewed and tested automatically, so do not plan review or test-only tasks.
 - "files" lists the paths or globs the task will touch. Every entry must fall inside the owned paths of that agent, or nobody can take the task and it is blocked. If work spans two agents, split it into two tasks.
 - Never plan changes to protected paths. If the order needs one, say so in the summary and leave it to the owner.

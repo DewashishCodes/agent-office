@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, Empty, ErrorText, Sheet, ago, ghUrl, label, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, label, tokens, useAction } from '../ui.jsx'
 
 const COLS = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['done', 'Done'], ['blocked', 'Blocked']]
 
@@ -95,6 +95,7 @@ function TaskSheet({ id, pid, repo, onClose }) {
     (ev.type === 'run' && ev.data.task_id === id)))
   const [run, busy, actError] = useAction()
   const retry = () => run(async () => { await api(`/tasks/${id}/retry`, { method: 'POST' }); reload() })
+  const cancel = () => run(async () => { await api(`/tasks/${id}/cancel`, { method: 'POST' }); reload() })
 
   return (
     <Sheet title={t ? t.title : 'Task'} onClose={onClose}>
@@ -113,12 +114,14 @@ function TaskSheet({ id, pid, repo, onClose }) {
             {t.issue_number && <a href={ghUrl(repo, 'issues', t.issue_number)} target="_blank" rel="noreferrer">Issue #{t.issue_number}</a>}
             {t.branch && <span className="mono muted">{t.branch}</span>}
           </div>
-          {t.status === 'blocked' && (
+          {!['done', 'canceled'].includes(t.status) && !t.merged && (
             <div className="actions">
-              <Button variant="primary" disabled={busy} onClick={retry}>Retry task</Button>
+              {t.status === 'blocked' && <Button variant="primary" disabled={busy} onClick={retry}>Retry task</Button>}
+              <ConfirmButton variant="ghost" confirm="Cancel this task for good" disabled={busy} onConfirm={cancel}>Cancel task</ConfirmButton>
               <ErrorText error={actError} />
             </div>
           )}
+          {t.status === 'canceled' && <p className="muted small">Canceled. The rest of the order went on without it.</p>}
           {t.description && <section><h3>Description</h3><p className="pre">{t.description}</p></section>}
           {t.acceptance?.length > 0 && (
             <section><h3>Acceptance</h3><ul className="checks">{t.acceptance.map((a, i) => <li key={i}>{a}</li>)}</ul></section>

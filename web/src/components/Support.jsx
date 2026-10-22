@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { api, on, useData } from '../api.js'
 import { Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import Working from './Working.jsx'
 import { Md } from './Transcript.jsx'
 import { ServiceLog } from './Terminal.jsx'
 
@@ -38,7 +39,7 @@ export function SupportThread({ pid, support, floor = 'tech', onSentToTeam }) {
           </span>
         </div>
       ))}
-      {working && <p className="thinking small"><span className="pulse" aria-hidden="true" /> Support is on it{support.run.last_event ? `: ${support.run.last_event}` : ''}</p>}
+      {working && <Working text="Support is on it" lastEvent={support.run.last_event} since={support.run.started_at} />}
       <ErrorText error={error} />
     </div>
   )

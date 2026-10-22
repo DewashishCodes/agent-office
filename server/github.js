@@ -126,6 +126,10 @@ export async function prComment(project, number, body) {
   await gh('pr', 'comment', String(number), '-R', project.repo, '--body', body)
 }
 
+export async function closePR(project, number) {
+  await gh('pr', 'close', String(number), '-R', project.repo, '--comment', 'Canceled by the owner in Agent Crew.', '--delete-branch')
+}
+
 export async function mergePR(project, number) {
   await gh('pr', 'merge', String(number), '-R', project.repo, '--squash', '--delete-branch')
 }
@@ -220,6 +224,19 @@ export async function createRepoFromFolder(path, name) {
   const out = await exec('gh', ['repo', 'create', name, '--private', '--source', path, '--remote', 'origin', '--push'], path)
   return parseRemote(out.split('\n').find(l => l.includes('github.com'))) || `${await ghLogin()}/${name}`
 }
+
+// Squash merges rewrite a dependency's commits, so a stacked branch keeps only its own (base_sha..branch) on top of the
+// default branch. Returns the new base. A conflict aborts the rebase and leaves the branch as it was.
+async function restackNow(path, base_sha, branch, default_branch) {
+  await git(path, 'fetch', 'origin')
+  try { await git(path, 'rebase', '--onto', `origin/${default_branch}`, base_sha, branch) } catch (e) {
+    await git(path, 'rebase', '--abort').catch(() => {})
+    throw new Error(`Rebasing ${branch} onto ${default_branch} conflicted, so it needs a manual merge: ${e.message}`)
+  }
+  await git(path, 'push', '--force-with-lease', 'origin', branch)
+  return git(path, 'rev-parse', `origin/${default_branch}`)
+}
+export const restack = serial(restackNow)
 
 async function pushToNow(path, ref) {
   await git(path, 'push', 'origin', ref)

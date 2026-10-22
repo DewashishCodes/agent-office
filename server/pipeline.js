@@ -5,7 +5,7 @@ import { runClaude } from './runner.js'
 import { failTask, issueStatus, comment, git, denyRules, agentMode, policyFor } from './scheduler.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, VAULT_READ, mcpNames } from './crewmcp.js'
-import { parseVerdict } from './rules.js'
+import { parseVerdict, isAllowed } from './rules.js'
 
 const MAX_DIFF = 200_000
 
@@ -114,7 +114,11 @@ export async function checkTask(task_id) {
 
   let diff = await git(t.worktree, 'diff', `${t.base_sha}..HEAD`)
   if (diff.length > MAX_DIFF) diff = `${diff.slice(0, MAX_DIFF)}\n... diff truncated, read the files for the rest`
-  const diffBlock = `## Diff (git diff ${t.base_sha}..HEAD)\n\n\`\`\`diff\n${diff}\n\`\`\``
+  // The gate only checks owned paths; work that belongs to another task of the order is for the reviewer to send back.
+  const changed = (await git(t.worktree, 'diff', '--name-only', `${t.base_sha}..HEAD`)).split('\n').map(f => f.trim()).filter(Boolean)
+  const extra = t.files.length ? changed.filter(f => !isAllowed(f, t.files)) : []
+  const outside = extra.length ? `\n\n## Changed outside the task's planned files\n\n${extra.join('\n')}\n\nAsk for changes if any of these is work of another task of the order; small supporting edits (a test helper, an import) are fine.` : ''
+  const diffBlock = `## Diff (git diff ${t.base_sha}..HEAD)\n\n\`\`\`diff\n${diff}\n\`\`\`${outside}`
   const qa = {
     role: 'qa', kind: 'qa', label: 'QA', system: SYSTEM_QA,
     prompt: `${context}\n\nThe branch ${t.branch} is checked out here. Run the checks and end with the json verdict block.`,
@@ -151,5 +155,5 @@ export async function checkTask(task_id) {
   issueStatus(project, t, 'done')
   log(project.id, 'done', `"${t.title}" passed ${floor === 'tech' ? 'review and QA' : 'review'}`, { task_id, agent_id: t.agent_id, order_id: t.order_id, link: t.pr_url })
   // Checked synchronously right after our own update, so only the last task to finish triggers it.
-  if (!get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND status != 'done'`, t.order_id).n) await integrateOrder(t.order_id)
+  if (!get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND status NOT IN ('done', 'canceled')`, t.order_id).n) await integrateOrder(t.order_id)
 }
