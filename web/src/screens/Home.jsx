@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { on, useData, useEvents } from '../api.js'
-import { Badge, Empty, ErrorText, Sheet } from '../ui.jsx'
+import { api, on, useData, useEvents } from '../api.js'
+import { Badge, Button, Empty, ErrorText, Sheet, useAction } from '../ui.jsx'
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from './Wall.jsx'
-import Office from '../components/Office.jsx'
+import Office, { CrewThread } from '../components/Office.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import Settings from '../components/Settings.jsx'
 import '../office.css'
 
-const KANBAN = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['blocked', 'Blocked'], ['done', 'Done']]
+// Three boxes, as sketched: waiting, being built, being checked. Done is a count in the header.
+const LANES = [['todo', 'To do', ['planned', 'blocked']], ['doing', 'Doing', ['in_progress']], ['check', 'Review & QA', ['in_review', 'qa']]]
 
 function useWide() {
   const q = '(min-width: 900px)'
@@ -21,10 +22,11 @@ function useWide() {
   return wide
 }
 
-// The office: config rail, agent space with comms, the selected agent's terminal, a kanban strip, orders and what needs the owner.
+// Home is one screen: the agent space with the selected agent's terminal beside it, and along the bottom
+// config and vault, the kanban and the order section.
 export default function Home({ pid, project, reloadProject }) {
   const wide = useWide()
-  const [items, , error] = useData(`/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  const [items] = useData(`/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
   const [wall, , wallError] = useData(`/projects/${pid}/wall`, ev => ev.project_id === pid &&
     (['agent', 'order', 'task', 'crew_message'].includes(ev.type) || (ev.type === 'run' && ev.data.status !== 'running')))
   const [tasks] = useData(`/projects/${pid}/tasks`, on(pid, 'task'))
@@ -34,8 +36,8 @@ export default function Home({ pid, project, reloadProject }) {
     if (ev.type === 'run' && ev.project_id === pid && ev.data.agent_id) setLive(l => ({ ...l, [ev.data.agent_id]: ev.data }))
   })
   const [selected, setSelected] = useState(null)
+  const [sheet, setSheet] = useState(null)   // 'settings' | 'comms' | 'needs'
   const [quick, setQuick] = useState(null)
-  const [settings, setSettings] = useState(false)
 
   const agents = (wall?.agents || []).map(a => {
     const l = live[a.id]
@@ -45,80 +47,46 @@ export default function Home({ pid, project, reloadProject }) {
   })
   // Desktop always shows a terminal: the picked agent, else whoever is busy.
   const pick = agents.find(a => a.id === selected) || (wide ? agents.find(a => a.run?.status === 'running') || agents[0] : null)
-
-  const needs = (
-    <section className="card stack" aria-labelledby="needs-you">
-      <div className="row wrap">
-        <h2 id="needs-you" className="grow">Needs you {items?.length > 0 && <span className="count">{items.length}</span>}</h2>
-        <PushButton />
-      </div>
-      <ErrorText error={error} />
-      {items?.length === 0 && <Empty>All clear. Nothing needs you right now.</Empty>}
-      <ul className="list">{items?.map(i => <Item key={i.id} i={i} />)}</ul>
-      <a className="small" href="#/inbox">Inbox history</a>
-    </section>
-  )
-
-  const orders = wall && (
-    <section className="card stack">
-      <div className="row"><h2 className="grow">Orders</h2><a className="small" href="#/command">New order</a></div>
-      {wall.orders.length ? (
-        <ul className="feed">
-          {wall.orders.map(o => {
-            const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
-            const done = o.counts.done || 0
-            return (
-              <li key={o.id}>
-                <a className="order-row" href={`#/board/${o.id}`}>
-                  <span className="row"><span className="grow title clip">{o.plan?.summary || o.text}</span><Badge status={o.status} /></span>
-                  {total > 0 && (
-                    <span className="row small muted">
-                      <span className="meter grow"><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
-                      {done}/{total} done
-                    </span>
-                  )}
-                </a>
-              </li>
-            )
-          })}
-        </ul>
-      ) : <Empty>No open orders. Give one on Command.</Empty>}
-    </section>
-  )
-
-  const pane = pick && <Tile a={pick.run ? pick : { ...pick, run: null }} expanded onQuick={() => setQuick(pick.name)} />
+  const pane = pick && <Tile a={pick} expanded onQuick={() => setQuick(pick.name)} />
+  const close = () => setSheet(null)
 
   return (
-    <section className="office-home">
-      <nav className="office-rail" aria-label="Crew setup">
-        <button type="button" className="rail-btn" onClick={() => setSettings(true)} title="General project settings">
-          <Glyph d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /><span>Settings</span>
-        </button>
-        <a className="rail-btn" href="#/vault" title="Shared context vault: notes, decisions, files agents can pull"><Glyph d="M4 5h16v14H4zM4 9h16M9 13h6" /><span>Vault</span></a>
-        <a className="rail-btn" href="#/team" title="Team: add, clone and configure agents"><Glyph d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6" /><span>Team</span></a>
-        <a className="rail-btn" href="#/board" title="Board"><Glyph d="M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z" /><span>Board</span></a>
-        <a className="rail-btn" href="#/projects" title="Projects"><Glyph d="M3 7h7l2 2h9v10H3z" /><span>Projects</span></a>
-      </nav>
-
-      <section className="card office-space" aria-label="Agent space">
-        <div className="row"><h2 className="grow">Agent space</h2><span className="muted small">Tap a desk to see its terminal</span></div>
+    <section className="hq">
+      <section className="hq-space" aria-label="Agent space">
         <ErrorText error={wallError} />
-        {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected} inboxCount={items?.length || 0} />}
+        {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected}
+          inboxCount={items?.length || 0} onComms={() => setSheet('comms')} />}
       </section>
 
-      {wide && <section className="office-term" aria-label="Terminal">{pane || <div className="card"><Empty>No agents yet.</Empty></div>}</section>}
+      {wide && <section className="hq-term" aria-label="Terminal">{pane || <Empty>No agents yet.</Empty>}</section>}
 
-      <section className="card office-kanban" aria-label="Kanban">
-        <div className="row"><h2 className="grow">Kanban</h2><a className="small" href="#/board">Open board</a></div>
+      <nav className="hq-config" aria-label="Config and vault">
+        <Tool label="Settings" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4" onClick={() => setSheet('settings')} />
+        <Tool label="Vault" d="M4 5h16v14H4zM4 9h16M10 13h4" href="#/vault" />
+        <Tool label="Team" d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6" href="#/team" />
+        <Tool label="Projects" d="M3 7h7l2 2h9v10H3z" href="#/projects" />
+      </nav>
+
+      <section className="hq-kanban" aria-label="Kanban">
         <Kanban tasks={tasks} orders={wall?.orders} />
       </section>
 
-      <div className="office-orders">{needs}{orders}</div>
+      <section className="hq-orders" aria-label="Orders">
+        <Orders pid={pid} orders={wall?.orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')} />
+      </section>
 
-      {!wide && pick && (
-        <Sheet title={pick.name} onClose={() => setSelected(null)}>{pane}</Sheet>
+      {!wide && pick && <Sheet title={pick.name} onClose={() => setSelected(null)}>{pane}</Sheet>}
+      {sheet === 'settings' && project && <Settings project={project} reload={reloadProject} onClose={close} />}
+      {sheet === 'comms' && <Sheet title="Crew comms" onClose={close}><CrewThread crew={wall?.crew} /></Sheet>}
+      {sheet === 'needs' && (
+        <Sheet title="Needs you" onClose={close}>
+          <div className="stack">
+            <div className="row"><span className="grow" /><PushButton /></div>
+            {items?.length ? <ul className="list">{items.map(i => <Item key={i.id} i={i} />)}</ul> : <Empty>All clear. Nothing needs you right now.</Empty>}
+            <a className="small" href="#/inbox" onClick={close}>Inbox history</a>
+          </div>
+        </Sheet>
       )}
-      {settings && project && <Settings project={project} reload={reloadProject} onClose={() => setSettings(false)} />}
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
     </section>
   )
@@ -126,24 +94,79 @@ export default function Home({ pid, project, reloadProject }) {
 
 const Glyph = ({ d }) => <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d} /></svg>
 
+function Tool({ label, d, href, onClick }) {
+  return href
+    ? <a className="tool" href={href}><Glyph d={d} /><span>{label}</span></a>
+    : <button type="button" className="tool" onClick={onClick}><Glyph d={d} /><span>{label}</span></button>
+}
+
 // Work in flight only: tasks of open orders, plus anything blocked.
 function Kanban({ tasks, orders }) {
   if (!tasks || !orders) return null
   const open = new Set(orders.map(o => o.id))
   const shown = tasks.filter(t => open.has(t.order_id) || t.status === 'blocked')
-  if (!shown.length) return <Empty>Nothing in flight.</Empty>
+  const done = shown.filter(t => t.status === 'done').length
+  return LANES.map(([id, name, statuses], i) => {
+    const list = shown.filter(t => statuses.includes(t.status))
+    return (
+      <a key={id} className={`lane l-${id}`} href="#/board">
+        <span className="lane-head"><span>{name}</span><span className="n">{list.length}</span></span>
+        <span className="lane-cards">
+          {list.length ? list.map(t => (
+            <span key={t.id} className={`kcard ${t.status === 'blocked' ? 'blocked' : ''}`}>
+              <span className="clip">{t.title}</span>
+              <span className="kmeta">{t.agent_name || t.role}{t.status === 'blocked' ? ', blocked' : t.status === 'qa' ? ', QA' : ''}</span>
+            </span>
+          )) : <span className="lane-empty">Nothing</span>}
+        </span>
+        {i === 2 && done > 0 && <span className="lane-done">{done} done, waiting for merge</span>}
+      </a>
+    )
+  })
+}
+
+function Orders({ pid, orders, needs, onNeeds }) {
+  const [text, setText] = useState('')
+  const [sent, setSent] = useState(false)
+  const [run, busy, error] = useAction()
+  const send = e => {
+    e.preventDefault()
+    const t = text.trim()
+    if (t) run(async () => { await api(`/projects/${pid}/messages`, { method: 'POST', body: { text: t } }); setText(''); setSent(true) })
+  }
+  const approve = id => run(() => api(`/orders/${id}/approve`, { method: 'POST', body: {} }))
   return (
-    <div className="kanban-strip">
-      {KANBAN.map(([id, name]) => {
-        const list = shown.filter(t => t.status === id)
-        return (
-          <a key={id} className={`kcol s-${id}`} href="#/board">
-            <span className="kcol-head"><span>{name}</span><span className="n">{list.length}</span></span>
-            {list.slice(0, 3).map(t => <span key={t.id} className="kcard clip">{t.title}</span>)}
-            {list.length > 3 && <span className="muted small">+{list.length - 3} more</span>}
-          </a>
-        )
-      })}
-    </div>
+    <>
+      <div className="orders-head">
+        <h2>Orders</h2>
+        <button type="button" className={`needs-btn ${needs ? '' : 'calm'}`} onClick={onNeeds}>{needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'All clear'}</button>
+      </div>
+      <ul className="order-list">
+        {orders?.length ? orders.map(o => {
+          const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
+          const done = o.counts.done || 0
+          return (
+            <li key={o.id} className="order-line">
+              <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
+              {o.status === 'awaiting_approval' ? (
+                <span className="row">
+                  <a className="small" href="#/command">Plan</a>
+                  <Button small variant="primary" disabled={busy} onClick={() => approve(o.id)}>Approve</Button>
+                </span>
+              ) : total > 0
+                ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
+                : <Badge status={o.status} />}
+            </li>
+          )
+        }) : <li className="lane-empty">No open orders</li>}
+      </ul>
+      <form className="order-bar" onSubmit={send}>
+        <label className="sr-only" htmlFor="hq-order">New order for the Orchestrator</label>
+        <input id="hq-order" value={text} onChange={e => { setText(e.target.value); setSent(false) }} placeholder="Give the crew an order..." />
+        <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Send</Button>
+      </form>
+      {sent && <p className="small muted">Sent. The plan comes back on <a href="#/command">Command</a>.</p>}
+      <ErrorText error={error} />
+    </>
   )
 }

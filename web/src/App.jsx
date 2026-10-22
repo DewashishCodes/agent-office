@@ -41,6 +41,9 @@ export default function App() {
 
 function Shell() {
   const [route, setRoute] = useState(parseHash)
+  // Desktop sidebar: an icon rail unless the owner opens it; the choice sticks.
+  const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem('crew.nav') === 'open' } catch { return false } })
+  const toggleNav = () => setNavOpen(o => { try { localStorage.setItem('crew.nav', o ? 'min' : 'open') } catch {} return !o })
   useEffect(() => {
     const f = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
     addEventListener('hashchange', f)
@@ -82,14 +85,19 @@ function Shell() {
   const count = openInbox?.length || 0
 
   return (
-    <div className="app">
+    <div className={`app ${navOpen ? 'nav-open' : 'nav-min'}`}>
       {project && (
         <nav className="tabs" aria-label="Main">
-          <div className="brand"><img src="/icon.svg" alt="" width="24" height="24" /> Agent Crew</div>
+          <div className="brand">
+            <img src="/icon.svg" alt="" width="24" height="24" /><span className="brand-name">Agent Crew</span>
+            <button type="button" className="nav-toggle" onClick={toggleNav} aria-expanded={navOpen} aria-label={navOpen ? 'Collapse sidebar' : 'Expand sidebar'} title={navOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={navOpen ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></svg>
+            </button>
+          </div>
           {TABS.map(([id, name]) => (
-            <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} aria-current={tab === id ? 'page' : undefined}>
+            <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} title={name} aria-current={tab === id ? 'page' : undefined}>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={ICONS[id]} /></svg>
-              <span>{name}</span>
+              <span className="tab-name">{name}</span>
               {id === 'home' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
             </a>
           ))}

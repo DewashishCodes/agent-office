@@ -1,18 +1,27 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useEvents } from '../api.js'
-import { Badge, ago, initials } from '../ui.jsx'
+import { ago, initials } from '../ui.jsx'
 import { clawdFor, clawdUrl } from '../clawd.js'
 
-const FLIGHT_MS = 1100
+const FLIGHT_MS = 1200
 const BUBBLE_MS = 9000
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 // Stable hue per agent so a name has the same colour on the floor and in the thread.
 export const hue = id => (id == null ? 28 : (id * 67) % 360)
 
-// The office floor: one desk per agent, a mail tray for the owner, notes flying between them as agents message each other.
-// agents: wall agents with their newest run in a.run. onSelect(agent_id) opens that agent's terminal.
-export default function Office({ pid, agents, crew, selected, onSelect, inboxCount = 0 }) {
-  const floor = useRef()
+function light(a) {
+  const r = a.run
+  if (r?.status !== 'running') return a.status === 'paused' ? 'off' : 'idle'
+  if (r.pending_permission?.length) return 'ask'
+  if (r.state === 'paused' || r.state === 'handed_off') return 'hold'
+  if (r.state === 'waiting') return 'wait'
+  return 'busy'
+}
+
+// The agent space: a pixel office room. One desk per agent (its Clawd and monitor), the owner's mailbox by the door,
+// notes flying between desks as agents message each other. onSelect(agent_id) shows that agent's terminal.
+export default function Office({ pid, agents, crew, selected, onSelect, inboxCount = 0, onComms }) {
+  const room = useRef()
   const [flights, setFlights] = useState([])
   const [bubbles, setBubbles] = useState({})
   // Short animation overrides while a note leaves or lands: { agent_id: set }.
@@ -38,13 +47,13 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
       bubble(t, b)
       if (t !== 'owner') moment(t, 'read-note', 5000)
     })
-    const box = floor.current
+    const box = room.current
     if (!box || still()) return land()
     const at = key => {
-      const el = box.querySelector(`[data-desk="${key}"]`)
+      const el = box.querySelector(`[data-desk="${key}"] .sprite-box`)
       if (!el) return null
       const r = el.getBoundingClientRect(), f = box.getBoundingClientRect()
-      return { x: r.left - f.left + r.width / 2, y: r.top - f.top + r.height / 3 }
+      return { x: r.left - f.left + r.width * 0.2, y: r.top - f.top + r.height * 0.2 }
     }
     const a = at(from)
     const fl = targets.map(t => ({ id: `${m.id}-${t}`, a, b: at(t) })).filter(x => x.a && x.b)
@@ -52,55 +61,71 @@ export default function Office({ pid, agents, crew, selected, onSelect, inboxCou
     setTimeout(() => { setFlights(f => f.filter(x => !fl.includes(x))); land() }, FLIGHT_MS)
   })
 
+  const last = crew?.[crew.length - 1]
   return (
-    <div className="floor" ref={floor}>
-      <ul className="desks">
-        {agents.map(a => (
-          <Desk key={a.id} a={a} set={moments[a.id] || clawdFor(a, a.run)} bubble={bubbles[a.id]} selected={selected === a.id} onSelect={() => onSelect(a.id)} />
-        ))}
-        <li className="desk owner-desk" data-desk="owner">
-          <span className="tray" aria-hidden="true"><span /><span /><span /></span>
-          <span className="plate"><span className="title">You</span>{inboxCount > 0 && <span className="count">{inboxCount}</span>}</span>
-          <span className="muted small">{inboxCount ? 'Things need you' : 'Mail tray'}</span>
+    <div className="room" ref={room}>
+      <div className="room-wall">
+        <span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" />
+        <span className="sign" aria-hidden="true">CREW HQ</span>
+        <div className="mailbox" data-desk="owner" title="Your mail tray">
+          <span className="sprite-box mail-sprite" aria-hidden="true"><span /></span>
+          <span className="tag">You{inboxCount > 0 && <b className="tag-count">{inboxCount}</b>}</span>
           {bubbles.owner && <Bubble b={bubbles.owner} />}
-        </li>
+        </div>
+      </div>
+      <Plant />
+      <ul className="floor-desks">
+        {agents.map(a => (
+          <Station key={a.id} a={a} set={moments[a.id] || clawdFor(a, a.run)} bubble={bubbles[a.id]} selected={selected === a.id} onSelect={() => onSelect(a.id)} />
+        ))}
       </ul>
       {flights.map(f => (
         <span key={f.id} className="note-flight" aria-hidden="true"
           style={{ left: f.a.x, top: f.a.y, '--dx': `${f.b.x - f.a.x}px`, '--dy': `${f.b.y - f.a.y}px`, animationDuration: `${FLIGHT_MS}ms` }} />
       ))}
-      <div className="comms-head">
-        <img className="clawd sm" src={clawdUrl('pass-note')} alt="" width="96" height="32" draggable="false" />
-        <h3>Crew comms</h3>
-      </div>
-      <CrewThread crew={crew} />
+      <button type="button" className="comms-ticker" onClick={onComms} title="Open the crew conversation">
+        <img src={clawdUrl('pass-note')} alt="" width="72" height="24" />
+        {last ? <span className="clip"><b>{last.from_name || 'You'}</b> to {last.to_owner ? 'you' : last.to_name || 'everyone'}: {last.text}</span> : <span className="clip">No crew messages yet</span>}
+        <span className="ticker-more">Comms</span>
+      </button>
     </div>
   )
 }
 
-function Desk({ a, set, bubble, selected, onSelect }) {
-  const r = a.run
-  const working = r?.status === 'running'
-  const line = working ? (r.last_event || r.task_title || 'Starting') : a.status === 'paused' ? 'Paused' : r ? `Last: ${r.task_title || r.kind}` : a.role
-  const state = working ? r.state : a.status === 'paused' ? 'paused' : 'idle'
+function Station({ a, set, bubble, selected, onSelect }) {
+  const r = a.run, lt = light(a)
+  const doing = r?.status === 'running' ? (r.task_title || r.last_event || 'Starting') : lt === 'off' ? 'Paused' : 'Idle'
   return (
-    <li className={`desk ${selected ? 'selected' : ''} ${working ? 'busy' : ''}`} data-desk={a.id} style={{ '--hue': hue(a.id) }}>
-      <button type="button" className="desk-btn" onClick={onSelect} aria-pressed={selected} aria-label={`${a.name}, ${state}. Open terminal`}>
-        <img className="clawd" src={clawdUrl(set)} alt="" width="192" height="64" draggable="false"
-          onError={e => { if (!e.currentTarget.dataset.fell) { e.currentTarget.dataset.fell = 1; e.currentTarget.src = clawdUrl('idle') } }} />
-        <span className="plate"><span className="title clip">{a.name}</span><Badge status={state}>{state.replace('_', ' ')}</Badge></span>
-        <span className="muted small clip mono">{line}</span>
-        {r?.pending_permission?.length > 0 && <span className="wait small">Waiting for your permission</span>}
-      </button>
+    <li className={`station ${selected ? 'selected' : ''} l-${lt}`} data-desk={a.id} style={{ '--hue': hue(a.id) }}>
       {bubble && <Bubble b={bubble} />}
+      <button type="button" className="station-btn" onClick={onSelect} aria-pressed={selected} aria-label={`${a.name}: ${doing}. Show terminal`}>
+        <span className="sprite-box">
+          <span className="monitor" aria-hidden="true" />
+          <img className="sprite" src={clawdUrl(set)} alt="" draggable="false"
+            onError={e => { if (!e.currentTarget.dataset.fell) { e.currentTarget.dataset.fell = 1; e.currentTarget.src = clawdUrl('idle') } }} />
+        </span>
+        <span className="desk" aria-hidden="true" />
+        <span className="tag"><i className="light" />{a.name}</span>
+        <span className="doing clip">{doing}</span>
+      </button>
     </li>
   )
 }
 
 const Bubble = ({ b }) => (
   <span className={`speech ${b.kind === 'question' ? 'q' : ''}`} role="status">
-    <b>{b.from}</b> {b.text.length > 140 ? b.text.slice(0, 140) + '...' : b.text}
+    <b>{b.from}:</b> {b.text.length > 110 ? b.text.slice(0, 110) + '...' : b.text}
   </span>
+)
+
+// 16x16 pixel plant; crisp at any scale.
+const Plant = () => (
+  <svg className="plant" viewBox="0 0 16 16" aria-hidden="true" shapeRendering="crispEdges">
+    <rect x="7" y="2" width="2" height="5" fill="#5fa35a" /><rect x="4" y="4" width="3" height="2" fill="#6fbf69" />
+    <rect x="9" y="3" width="3" height="2" fill="#6fbf69" /><rect x="3" y="6" width="4" height="2" fill="#5fa35a" />
+    <rect x="9" y="6" width="4" height="2" fill="#5fa35a" /><rect x="7" y="7" width="2" height="3" fill="#4a8a46" />
+    <rect x="4" y="10" width="8" height="5" fill="#b56a45" /><rect x="4" y="10" width="8" height="1" fill="#c97d55" />
+  </svg>
 )
 
 // Crew messages as a conversation: avatars, bubbles, consecutive messages from one sender grouped.
@@ -108,20 +133,20 @@ export function CrewThread({ crew }) {
   const box = useRef()
   const n = crew?.length
   useLayoutEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight }, [n])
-  if (!crew?.length) return <p className="empty thread-empty">Agents have not talked yet. Their messages to each other show up here and fly across the floor.</p>
+  if (!crew?.length) return <p className="empty">Agents have not talked yet. Their messages to each other show up here and fly across the office.</p>
   return (
-    <ol className="thread" ref={box} aria-label="Crew conversation">
+    <ol className="cm-thread" ref={box} aria-label="Crew conversation">
       {crew.map((m, i) => {
         const prev = crew[i - 1]
         const first = !prev || prev.from_agent_id !== m.from_agent_id || prev.to_agent_id !== m.to_agent_id || prev.to_owner !== m.to_owner
         const mine = m.from_agent_id == null
         const to = m.to_owner ? 'you' : m.to_name || 'everyone'
         return (
-          <li key={m.id} className={`say ${mine ? 'mine' : ''} ${first ? 'first' : ''}`} style={{ '--hue': hue(m.from_agent_id) }}>
+          <li key={m.id} className={`cm ${mine ? 'mine' : ''} ${first ? 'first' : ''}`} style={{ '--hue': hue(m.from_agent_id) }}>
             {first && <span className="avatar sm" aria-hidden="true">{initials(m.from_name || 'You')}</span>}
-            <div className="say-body">
-              {first && <div className="say-meta"><b>{m.from_name || 'You'}</b> to {to}{m.kind !== 'message' && <span className="pill">{m.kind}</span>} <span className="muted">{ago(m.created_at)}</span></div>}
-              <p className="say-bubble pre">{m.text}</p>
+            <div className="cm-body">
+              {first && <div className="cm-meta"><b>{m.from_name || 'You'}</b> to {to}{m.kind !== 'message' && <span className="pill">{m.kind}</span>} <span className="muted">{ago(m.created_at)}</span></div>}
+              <p className="cm-bubble pre">{m.text}</p>
             </div>
           </li>
         )
