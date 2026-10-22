@@ -3,6 +3,7 @@ import { api, useData } from '../api.js'
 import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
 import Terminal from '../components/Terminal.jsx'
+import ModelEffort from '../components/ModelEffort.jsx'
 
 const PERMS = [['open_pr', 'Open PRs'], ['comment', 'Comment on PRs'], ['run_tests', 'Run tests'], ['merge', 'Merge'], ['autonomous', 'Autonomous (never asks before commands)']]
 const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
@@ -10,7 +11,7 @@ const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
 function toForm(a) {
   return {
     name: a.name, role: a.role, specialty: a.specialty, instructions: a.instructions,
-    model: a.model, effort: a.effort, max_parallel: a.max_parallel, daily_token_budget: a.daily_token_budget,
+    max_parallel: a.max_parallel, daily_token_budget: a.daily_token_budget,
     owned_paths: (a.owned_paths || []).join('\n'), readonly_paths: (a.readonly_paths || []).join('\n'),
     permissions: { ...a.permissions },
   }
@@ -75,6 +76,7 @@ export default function AgentProfile({ pid, id }) {
           <p className="muted small">{doneCount} of the last {a.tasks?.length || 0} tasks done, ${cost.toFixed(2)} over the last {a.runs?.length || 0} runs, budget {tokens(a.daily_token_budget)} tokens a day</p>
         </div>
       </header>
+      <ModelEffort a={a} onSaved={reload} />
 
       <section className="card stack">
         <div className="row wrap">
@@ -119,7 +121,7 @@ export default function AgentProfile({ pid, id }) {
       </section>
 
       <details className="card settings">
-        <summary><h2>Settings</h2><span className="muted small">model, budget, paths, permissions</span></summary>
+        <summary><h2>Settings</h2><span className="muted small">budget, paths, permissions</span></summary>
         <form className="stack" onSubmit={save}>
           <div className="grid2">
             {f('name', 'Name', { required: true })}
@@ -130,16 +132,9 @@ export default function AgentProfile({ pid, id }) {
             <textarea rows="5" value={form.instructions} onChange={e => set('instructions', e.target.value)} />
           </label>
           <div className="grid2">
-            {f('model', 'Model', { list: 'models' })}
-            <label className="field"><span>Effort</span>
-              <select value={form.effort} onChange={e => set('effort', e.target.value)}>
-                {['low', 'medium', 'high', 'xhigh', 'max'].map(x => <option key={x}>{x}</option>)}
-              </select>
-            </label>
             {f('max_parallel', 'Max parallel tasks', { type: 'number', min: 1, max: 10 })}
             {f('daily_token_budget', 'Daily token budget', { type: 'number', min: 0, step: 100000 })}
           </div>
-          <datalist id="models">{['opus', 'sonnet', 'haiku'].map(m => <option key={m} value={m} />)}</datalist>
           <label className="field"><span>Owned paths (one glob per line)</span>
             <textarea rows="4" className="mono" value={form.owned_paths} onChange={e => set('owned_paths', e.target.value)} />
           </label>
