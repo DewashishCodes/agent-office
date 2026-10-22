@@ -398,3 +398,5 @@ h1 .count { vertical-align: middle; }
   .chats-btn { display: none; }
   .chat { width: 100%; }
 }
+.branch-pick { align-items: flex-end; }
+.hotfix-toggle { display: flex; align-items: center; gap: 6px; }

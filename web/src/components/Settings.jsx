@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../api.js'
+import { api, useData } from '../api.js'
 import { Button, ErrorText, Sheet, useAction } from '../ui.jsx'
 
 const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
@@ -42,6 +42,7 @@ export default function Settings({ project, onClose, reload }) {
     <Sheet title="Project settings" onClose={onClose}>
       <form className="stack" onSubmit={save}>
         <p className="muted small">{project.repo}</p>
+        <BranchPicker project={project} reload={reload} />
         <label className="field"><span>Name</span><input value={f.name} onChange={set('name')} required /></label>
         <div className="grid2">
           <label className="field"><span>Daily token budget for the project</span><input type="number" min="0" step="1000000" value={f.budget} onChange={set('budget')} required /></label>
@@ -69,5 +70,29 @@ export default function Settings({ project, onClose, reload }) {
         <ErrorText error={error} />
       </form>
     </Sheet>
+  )
+}
+
+// Switches on its own button, not with Save: it checks the branch out in the crew's clone right away.
+function BranchPicker({ project, reload }) {
+  const [data, , loadError] = useData(`/projects/${project.id}/branches`)
+  const [branch, setBranch] = useState(project.default_branch)
+  const [run, busy, error] = useAction()
+  const change = () => run(async () => {
+    await api(`/projects/${project.id}`, { method: 'PATCH', body: { default_branch: branch } })
+    reload?.()
+  })
+  return (
+    <div className="stack">
+      <div className="row wrap branch-pick">
+        <label className="field grow"><span>Working branch: new tasks start from it, PRs target it, hotfixes push to it</span>
+          <select value={branch} onChange={e => setBranch(e.target.value)} disabled={!data}>
+            {(data?.branches || [project.default_branch]).map(b => <option key={b}>{b}</option>)}
+          </select>
+        </label>
+        <Button disabled={busy || branch === project.default_branch} onClick={change}>{busy ? 'Switching' : 'Switch branch'}</Button>
+      </div>
+      <ErrorText error={loadError || error} />
+    </div>
   )
 }
