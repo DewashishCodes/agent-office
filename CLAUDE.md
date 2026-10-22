@@ -21,7 +21,8 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 - `server/db.js` schema + helpers (node:sqlite, `data/crew.db`). Use `setTask/setAgent/setOrder/log/addInbox` so changes broadcast.
 - `server/bus.js` event bus; `index.js` forwards every event over SSE `/api/events`, the UI refetches on matching events.
-- `server/runner.js` keeps one `claude -p` per run with stdin open (stream-json in and out, `--permission-prompt-tool stdio`, `--setting-sources project --strict-mcp-config`). Stores the transcript in `run_events`, streams text deltas, accepts owner messages, interrupt, resume, handoff; permission prompts go to `rules.permissionPolicy` or the owner. Tracks tokens, cost, 5-hour limit (kv `rate_limit`), `last_event`.
+- `server/runner.js` two engines behind one API. Task, Reviewer and QA runs are real interactive `claude` in a pty (`@lydell/node-pty`): control through hooks that call `POST /hook/:token` via `server/hook.mjs` (PermissionRequest -> `rules.permissionPolicy` or the owner, Stop -> turn end and result text, UserPromptSubmit), status line -> cost and 5-hour limit, the session jsonl -> `run_events`, tokens, `last_event`. Prompts are pasted once the input box is drawn; Take over gives the owner the keyboard in the browser; output kept in `data/pty/run-<id>.log`. Orchestrator, onboarding, integrate (and everything when `CREW_TERMINAL=json` or under the fake CLI) stay on `claude -p` stream-json with `--permission-prompt-tool stdio`.
+- `server/vault.js` shared context vault (notes, decisions, files under `data/vault/<project>/`, repo crew docs read live). Agents get titles in the prompt and the crew MCP tools vault_search, vault_read, vault_write.
 - `server/crewmcp.js` HTTP MCP server at `/mcp/:token` (one token per run): crew_post, crew_ask, crew_read, crew_task_status so agents message and ask each other, the Orchestrator or the owner.
 - `server/github.js` git and gh wrappers. Clone-level ops (clone, fetch, worktree add/remove, push) go through one serial queue; parallel agents raced on git lock files without it.
 - `server/orchestrator.js` chat (resumed session per project, one at a time per project), plan JSON, revise, approve (rejects dependency loops), integrate.
@@ -29,7 +30,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 - `server/pipeline.js` Reviewer then QA per PR, verdicts as fenced json, failures go through `failTask` (2 attempts, then Inbox).
 - `server/onboarding.js` writes CLAUDE.md, `.crew/PLAYBOOK.md`, `.crew/owned-paths.json` in the target repo as one PR.
 - `server/index.js` Express routes, owner-token cookie auth, inbox actions. `server/notify.js` web push (VAPID in kv) and daily digest.
-- `web/` React 19 PWA, plain CSS, hash routing. Screens: Login, Projects, Command, Wall (live agent tiles, desktop first), Board, Team, AgentProfile, Inbox.
+- `web/` React 19 PWA, plain CSS, hash routing. Home is the office (rail, agent space with Clawd desks and flying crew notes, the selected agent's real terminal via xterm.js, kanban strip, orders, Needs you). Other screens: Login, Projects, Command, Wall, Board, Team, AgentProfile, Inbox history, Vault. Clawd GIFs in `web/public/clawd` (CodeChrisB/MyClawd, no license upstream: private use only), state mapping in `web/src/clawd.js`.
 
 ## Conventions
 
@@ -40,13 +41,18 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 ## Gotchas
 
+- Terminal runs need the native `claude.exe` on PATH (or `CREW_CLAUDE_PTY_BIN`). The child env drops the `CLAUDE_CODE_*` markers a parent session leaves, or the CLI stops saving its transcript (tokens and run_events would stay empty).
 - Task agents and QA run with `acceptEdits`: Bash outside the `auto_allow_bash` list and file access outside the worktree ask the owner (Inbox, Wall). Deny rules (`git push`, `gh`, `.env`, protected paths) apply in every mode. An agent marked autonomous goes back to `bypassPermissions`.
 - `npm test` uses `test/fake-claude.mjs` via `CREW_CLAUDE_BIN`; no real sessions in tests.
 - `node --test test/` fails on Node 24 (treated as a file); the script uses the `"test/*.test.js"` glob.
 - Files written by subagents may have CRLF endings; string-replace scripts must handle that.
 - The server does not hot reload with `npm start`; restart after server changes (check no runs are `running` first).
 
-## Status (2026-10-21)
+## Status (2026-10-22)
+
+v3 (docs/PLAN-V3.md: real terminals, office Home, Clawds, vault, settings) implemented, not yet tested live by the owner. The terminal engine passed one smoke run (permission via Inbox, Stop result, tokens, cost).
+
+### Earlier (2026-10-21)
 
 v2 (docs/PLAN-V2.md, E1 to E5) implemented. Verified on the sandbox: two agents in parallel (PRs #12, #13), an owner message injected mid-task and acted on, permission prompts answered from Inbox and from the run route, pause and resume, take over and hand back (session resumed with --resume), a quick task, a crew_post between agents. Earlier: MVP loop (onboarding PR #1, PRs #4, #5).
 

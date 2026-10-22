@@ -265,3 +265,25 @@ Inbox: `permission` items take `allow | deny | dismiss`; `question:answer` on an
 
 ### Plans and scheduling
 Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends_on` may hold `"order:<id>/<key>"`. A ready task waits while a task of another order with overlapping files is in progress, review or QA (`wait_reason`). Restarts and removals never count an attempt; review and QA cut off by a restart or the kill switch run again (`resumeChecks`). A retry after review feedback resumes the last clean task session.
+
+## v3 additions (docs/PLAN-V3.md)
+
+### Runner
+- Engine per run: `pty` for kinds `task | review | qa` (interactive `claude` in a pty), `json` for the rest, for everything under `CREW_TERMINAL=json` and under `CREW_CLAUDE_BIN`. `runs.terminal = 1` marks pty runs. The `runClaude` contract and its result are unchanged.
+- pty runs: `--session-id <uuid>` (or `--resume`), one `--settings` JSON with deny rules, hooks (PermissionRequest, Stop, UserPromptSubmit) and a status line, all running `node server/hook.mjs <base>/hook/<token> hook|status`.
+- `hookEvent(token, kind, body)`: status line -> cost (`cost.total_cost_usd`, cumulative per process) and kv `rate_limit` from `rate_limits.five_hour.used_percentage`; PermissionRequest -> policy, `ask` holds the hook until `answerPermission` or the timeout; Stop -> `result` run_event, run ends 2.5s later unless a new prompt was submitted, the run is kept open or the owner has the keyboard.
+- Tokens come from the session jsonl (`input + cache_creation`, `output`, counted once per API message id).
+- `watchPty(run_id, fn)`: `{cols, rows}`, the buffered screen, then chunks; `null` at the end. `ptyInput` only while `state = handed_off`. `ptyResize` broadcasts the new size. `handoffRun` on a pty run returns `{ terminal: true, ... }` and keeps the process.
+
+### Routes
+| Method | Path | Does |
+| --- | --- | --- |
+| POST | /hook/:token?kind=hook\|status | loopback only, per-run token; body up to 50 MB |
+| GET | /api/runs/:id/pty | SSE: live terminal, or the tail of `data/pty/run-<id>.log` then `event: end` |
+| POST | /api/runs/:id/pty/input `{data}`, /pty/resize `{cols, rows}` | keyboard after Take over, size from the driving view |
+| GET, POST | /api/projects/:id/vault, /vault/doc?path=, /vault/files?name=&type= (octet-stream body) | list, repo doc, note or decision, upload |
+| GET, PATCH, DELETE | /api/vault/:id, GET /api/vault/:id/file | entry, edit, delete, download |
+PATCH /api/projects/:id validates every settings key (`SETTINGS` in index.js).
+
+### Vault
+Table `vault (kind note | decision | file, title, body, file, mime, size, tags, author_agent_id)`, `server/vault.js`. Crew MCP adds `vault_search`, `vault_read`, `vault_write` (task, QA: all; Reviewer: search, read; Orchestrator: all). Task prompts list titles via `vaultIndex`. `permissionPolicy` allows Read/Glob/Grep/LS under `settings.read_roots` (the scheduler passes the vault dir).
