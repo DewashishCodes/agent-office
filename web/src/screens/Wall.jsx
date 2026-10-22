@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
 import Terminal from '../components/Terminal.jsx'
+import { CrewThread } from '../components/Office.jsx'
+import '../office.css'
 import QuickTask from '../components/QuickTask.jsx'
 import '../wall.css'
 
@@ -56,16 +58,7 @@ export default function Wall({ pid }) {
         </section>
         <section className="card stack">
           <h2>Crew messages</h2>
-          {wall.crew.length ? (
-            <ul className="feed crew-feed">
-              {wall.crew.slice().reverse().map(m => (
-                <li key={m.id}>
-                  <span className="small"><b>{m.from_name || 'You'}</b> to <b>{m.to_owner ? 'you' : m.to_name || 'everyone'}</b>{m.kind !== 'message' && <span className="pill">{m.kind}</span>} <span className="muted">{ago(m.created_at)}</span></span>
-                  <p className="pre small">{m.text}</p>
-                </li>
-              ))}
-            </ul>
-          ) : <Empty>Agents have not talked yet</Empty>}
+          <CrewThread crew={wall.crew} />
         </section>
       </aside>
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
@@ -75,7 +68,8 @@ export default function Wall({ pid }) {
 
 export const stateOf = r => (r?.status === 'running' ? r.state : 'idle')
 
-function Tile({ a, expanded, onExpand, onQuick }) {
+// Also Home's terminal pane: there it is always expanded and has no Open button (onExpand omitted).
+export function Tile({ a, expanded, onExpand, onQuick }) {
   const r = a.run
   const state = stateOf(r)
   const liveRun = r?.status === 'running'
@@ -119,7 +113,7 @@ function Tile({ a, expanded, onExpand, onQuick }) {
         {liveRun && (state === 'running' || state === 'waiting') && <Button small disabled={busy} onClick={() => post('interrupt')}>Pause</Button>}
         {liveRun && state === 'paused' && <Button small variant="primary" disabled={busy} onClick={() => post('resume')}>Resume</Button>}
         {liveRun && state === 'handed_off' && <Button small variant="primary" disabled={busy} onClick={() => post('resume', { text: HAND_BACK })}>Hand back</Button>}
-        <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>
+        {onExpand && <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>}
         {(liveRun || a.owned_paths?.length > 0) && (
           <More>
             {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over the keyboard</Button>}

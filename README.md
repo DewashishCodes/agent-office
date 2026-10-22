@@ -35,3 +35,7 @@ Open http://localhost:5190, log in with your `OWNER_TOKEN`, and add a repo as `o
 Agents run on your own machine using your Claude plan, so the PC has to stay on while they work.
 
 See `CLAUDE.md` for architecture and status, and `docs/CONTRACTS.md` for module contracts.
+
+## Clawd art
+
+The pixel-art Clawd animations in `web/public/clawd/` come from [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd) (a fan project; Clawd is Anthropic's mascot and mark). That repo publishes no license, so the files are used here for a private, personal install only. Remove them, or get the author's permission, before making this repository public. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit.
