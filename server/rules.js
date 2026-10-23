@@ -260,3 +260,22 @@ export function parseProposal(text, { floors, templates }) {
     },
   }
 }
+
+// Failed logins per IP: after max misses the IP waits out the window. Memory only, so a restart clears it.
+export function loginLimiter({ max = 10, windowMs = 15 * 60 * 1000 } = {}) {
+  const misses = new Map()
+  const current = (ip, now) => {
+    const m = misses.get(ip)
+    if (m && now - m.at > windowMs) misses.delete(ip)
+    return misses.get(ip)
+  }
+  return {
+    blocked: (ip, now = Date.now()) => (current(ip, now)?.n || 0) >= max,
+    miss(ip, now = Date.now()) {
+      const m = current(ip, now)
+      misses.set(ip, { n: (m?.n || 0) + 1, at: m?.at ?? now })
+      if (misses.size > 10000) for (const k of misses.keys()) current(k, now)
+    },
+    clear: ip => misses.delete(ip),
+  }
+}

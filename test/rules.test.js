@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps, chainOrder } from '../server/rules.js'
+import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps, chainOrder, loginLimiter } from '../server/rules.js'
 
 process.env.CREW_DB = ':memory:'
 const { DEFAULT_SETTINGS } = await import('../server/db.js')
@@ -185,4 +185,14 @@ test('permissionPolicy: web tools only for agents allowed the web', () => {
   assert.equal(permissionPolicy(S, { permissions: { web: true } }, 'WebSearch', { query: 'x' }, CWD), 'allow')
   assert.equal(permissionPolicy(S, { permissions: { web: true } }, 'WebFetch', { url: 'https://example.com' }, CWD), 'allow')
   assert.equal(permissionPolicy(S, { permissions: {} }, 'WebFetch', { url: 'https://example.com' }, CWD), 'ask')
+})
+
+test('loginLimiter: blocks an IP after max misses until the window passes, per IP', () => {
+  const l = loginLimiter({ max: 3, windowMs: 1000 })
+  for (let i = 0; i < 3; i++) { assert.equal(l.blocked('a', 0), false); l.miss('a', i) }
+  assert.equal(l.blocked('a', 500), true)
+  assert.equal(l.blocked('b', 500), false)
+  assert.equal(l.blocked('a', 1001), false)
+  l.miss('b', 0); l.clear('b')
+  assert.equal(l.blocked('b', 0), false)
 })

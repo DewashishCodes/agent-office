@@ -14,7 +14,7 @@ import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './o
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
-import { matchAgent } from './rules.js'
+import { matchAgent, loginLimiter } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
@@ -83,7 +83,8 @@ function retryTask(id) {
 }
 
 export const app = express()
-app.set('trust proxy', true)
+// Only a local proxy (Tailscale Serve) may set X-Forwarded-*; otherwise a client could pick its own IP for the login limit.
+app.set('trust proxy', 'loopback')
 
 // Hooks and the status line of terminal runs (server/hook.mjs). Same trust as the crew MCP: loopback plus the per-run token.
 // Before the global parser: a PermissionRequest for a big Write carries the whole file.
@@ -99,9 +100,15 @@ app.use(express.json({ limit: '1mb' }))
 // Crew MCP for agent sessions on this host; auth is the per-run token, not the owner cookie.
 app.all('/mcp/:token', mcpHandler)
 
+const logins = loginLimiter()
 app.post('/api/login', (req, res) => {
+  if (logins.blocked(req.ip)) throw fail(429, 'too many wrong tokens, try again in 15 minutes')
   const token = req.body?.token
-  if (typeof token !== 'string' || !timingSafeEqual(sha(token), sha(process.env.OWNER_TOKEN))) throw fail(401, 'wrong token')
+  if (typeof token !== 'string' || !timingSafeEqual(sha(token), sha(process.env.OWNER_TOKEN))) {
+    logins.miss(req.ip)
+    throw fail(401, 'wrong token')
+  }
+  logins.clear(req.ip)
   res.cookie('crew', SESSION, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: 30 * 24 * 3600 * 1000 })
   res.json({ ok: true })
 })
