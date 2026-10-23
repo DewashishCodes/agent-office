@@ -134,6 +134,11 @@ export async function mergePR(project, number) {
   await gh('pr', 'merge', String(number), '-R', project.repo, '--squash', '--delete-branch')
 }
 
+// MERGEABLE, CONFLICTING or UNKNOWN (GitHub still computing).
+export async function prMergeable(project, number) {
+  return JSON.parse(await gh('pr', 'view', String(number), '-R', project.repo, '--json', 'mergeable')).mergeable
+}
+
 const FAILED = ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
 
 export async function prState(project, number) {

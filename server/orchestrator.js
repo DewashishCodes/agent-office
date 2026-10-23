@@ -1,7 +1,7 @@
 import { all, get, insert, getProject, getOrder, activeAgents, setTask, setOrder, log, addMessage, addInbox, resolveInbox } from './db.js'
 import { emit } from './bus.js'
 import { runClaude } from './runner.js'
-import { ensureClone, pullDefault, createIssue, prDiff } from './github.js'
+import { ensureClone, pullDefault, createIssue, prDiff, prMergeable } from './github.js'
 import { kick } from './scheduler.js'
 import { FLOORS, floorOf } from './roster.js'
 import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder } from './rules.js'
@@ -340,6 +340,15 @@ Use "verdict": "problems" and explain in notes when something does not fit.`, { 
   } catch (e) {
     notes = `Integration check failed: ${e.message}`
     log(pid, 'error', notes, { order_id })
+  }
+  // A chain is restacked at merge time, but a PR that already conflicts with the branch needs the owner before merging.
+  const conflicts = []
+  for (const t of open) if (await prMergeable(project, t.pr_number).catch(() => null) === 'CONFLICTING') conflicts.push(`#${t.pr_number}`)
+  if (conflicts.length) {
+    notes += `
+
+${conflicts.join(', ')} conflict${conflicts.length > 1 ? '' : 's'} with ${project.default_branch} and cannot merge as is.`
+    log(pid, 'warning', `PRs conflict with ${project.default_branch}: ${conflicts.join(', ')}`, { order_id })
   }
   say(pid, order.floor, 'orchestrator', `All tasks for "${order.plan?.summary || order.text}" are done and ready to merge.\n\n${notes}`, null, chatFor(pid, order.floor, order_id))
   for (const [n, t] of tasks.filter(t => t.pr_number && !t.merged).entries()) {
