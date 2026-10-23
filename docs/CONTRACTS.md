@@ -222,7 +222,7 @@ Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once
 - Projects screen when there is no project yet: input "owner/repo" -> POST /api/projects, show onboarding status.
 - PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
 
-## v2 additions (docs/PLAN-V2.md, phases E1 to E5)
+## v2 additions (docs/history/PLAN-V2.md, phases E1 to E5)
 
 These override the MVP notes above where they disagree.
 
@@ -273,7 +273,7 @@ Inbox: `permission` items take `allow | deny | dismiss`; `question:answer` on an
 ### Plans and scheduling
 Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends_on` may hold `"order:<id>/<key>"`. A ready task waits while a task of another order with overlapping files is in progress, review or QA (`wait_reason`). Restarts and removals never count an attempt; review and QA cut off by a restart or the kill switch run again (`resumeChecks`). A retry after review feedback resumes the last clean task session.
 
-## v3 additions (docs/PLAN-V3.md)
+## v3 additions (docs/history/PLAN-V3.md)
 
 ### Runner
 - Engine per run: `pty` for kinds `task | review | qa` (interactive `claude` in a pty), `json` for the rest, for everything under `CREW_TERMINAL=json` and under `CREW_CLAUDE_BIN`. `runs.terminal = 1` marks pty runs. The `runClaude` contract and its result are unchanged.
