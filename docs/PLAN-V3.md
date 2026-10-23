@@ -42,7 +42,7 @@ Phone: stacked. Desks scroll sideways, tap a desk for its terminal full screen, 
 - New deps `@xterm/xterm`, `@xterm/addon-fit`. `Terminal.jsx` replaces `Transcript` wherever a run is shown. Read only until Take over; the Tell box stays.
 
 ### O1 Clawd assets
-- Copy the needed MyClawd sets (loop GIFs, enter/exit where used) into `web/public/clawd/<set>/`. The repo has no license and Clawd is an Anthropic mark: fine while this repo is private, note it in the README.
+- Copy the needed MyClawd sets (loop GIFs, enter/exit where used) into `web/public/clawd/<set>/`, credited to CodeChrisB/MyClawd in the README.
 - Map agent state and last tool to a set: Bash -> bash, Edit/Write -> writing, Read/Grep -> reading/search, git push -> git-push, PR -> git-pr, tests -> testing, review -> code-review, permission wait -> permission, idle -> idle-coffee/idle-book, done -> celebrate, error -> crash, handed off -> handoff, crew message -> new-mail.
 - Our own sets with the MyClawd toolkit: two Clawds passing a note (crew messages), Clawd at a desk.
 

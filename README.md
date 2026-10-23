@@ -38,4 +38,4 @@ See `CLAUDE.md` for architecture and status, and `docs/CONTRACTS.md` for module 
 
 ## Clawd art
 
-The pixel-art Clawd animations in `web/public/clawd/` come from [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd) (a fan project; Clawd is Anthropic's mascot and mark). That repo publishes no license, so the files are used here for a private, personal install only. Remove them, or get the author's permission, before making this repository public. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit.
+The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit.

@@ -1,5 +1,5 @@
 // Which Clawd animation (web/public/clawd/<set>/loop.gif) shows what an agent is doing.
-// Pixel art from CodeChrisB/MyClawd (no license given; Clawd is Anthropic's mascot). Fine while this repo is private.
+// Clawd pixel art by CodeChrisB/MyClawd (Clawd is Anthropic's mascot).
 
 const IDLE = ['idle-coffee', 'idle-book', 'idle-look', 'idle-doze', 'idle']
 
