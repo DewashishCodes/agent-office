@@ -7,7 +7,7 @@ Rules for everyone:
 - Built-ins to use: `node:sqlite` (via server/db.js), `node:child_process` `spawn`/`execFile` with argument arrays (never a shell string), `path.matchesGlob` for globs, `node:test` + `node:assert` for tests.
 - Never use em or en dash characters anywhere (code, comments, UI text, docs). Use a plain hyphen, comma or colon.
 - Comments only for the why. Match the terse style of server/db.js.
-- Windows host. Paths may contain spaces (`C:\Users\Dewashish Lambore\...`). Always pass paths as args, never interpolate into a shell string.
+- Built on a Windows host. Paths may contain spaces (`C:\Users\Jane Doe\...`). Always pass paths as args, never interpolate into a shell string.
 
 ## Shared modules (already written, do not edit)
 

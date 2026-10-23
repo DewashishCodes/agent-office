@@ -1,6 +1,6 @@
 # Agent Office
 
-Phone-first web app that runs a team of Claude Code agents on a GitHub repo. The owner gives orders to one Orchestrator, approves its plan, specialist agents build the tasks as PRs, Reviewer and QA check them, the owner merges from the Inbox. Source PRD: PRD Phase 1 MVP (F1 to F11).
+Phone-first web app that runs a team of Claude Code agents on a GitHub repo. The owner gives orders to one Orchestrator, approves its plan, specialist agents build the tasks as PRs, Reviewer and QA check them, the owner merges from the Inbox.
 
 ## Run
 
@@ -9,9 +9,9 @@ cp .env.example .env      # set OWNER_TOKEN to a long random string
 npm install
 npm run build             # builds web/ into web/dist
 npm start                 # http://localhost:5190, log in with OWNER_TOKEN
-npm test                  # node:test, server/rules.js helpers
+npm test                  # node:test with a fake claude CLI
 ```
-Dev: `npm run dev:server` (5190, --watch) and `npm run dev:web` (Vite on 5191, proxies /api). Ports 5173 and 5180 belong to other local apps.
+Dev: `npm run dev:server` (5190, --watch) and `npm run dev:web` (Vite on 5191, proxies /api).
 
 Needs on the host: Node 24, `git`, `claude` CLI logged in, `gh` CLI logged in with repo scope. The PC must stay on: agents run locally.
 
@@ -51,26 +51,3 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 - `node --test test/` fails on Node 24 (treated as a file); the script uses the `"test/*.test.js"` glob.
 - Files written by subagents may have CRLF endings; string-replace scripts must handle that.
 - The server does not hot reload with `npm start`; restart after server changes (check no runs are `running` first).
-
-## Status (2026-10-22)
-
-Latest (2026-10-23): hotfix mode and switching the project branch. The hotfix git steps are tested against a local bare repo; no real hotfix run yet. Phone access is live: `tailscale serve --bg 5190` (persists across restarts, tailnet only, off with `tailscale serve --https=443 off`) serves https://desktop-h9pmrj0.tail397325.ts.net. Checked from the PC: valid certificate, login, API, SSE, manifest and service worker.
-
-Before that: Command chats (list, new chat per visit, resume), model and effort picker on Team cards and profiles (Clawd effort gauge and model-switch sets), a full Custom agent form (owned paths, model, effort, open_pr by default), the Board kanban fits the screen with per-column scroll, Team crash fix. Pushed to the private GitHub repo `DewashishCodes/agent-crew`. Build and tests pass; chats checked through the API only, the new screens not yet tried in a browser. A DB backup from before the chats migration is in `data/crew-before-chats.db`.
-
-v3 (docs/PLAN-V3.md: real terminals, office Home, Clawds, vault, settings) implemented, not yet tested live by the owner. The terminal engine passed one smoke run (permission via Inbox, Stop result, tokens, cost).
-
-### Earlier (2026-10-21)
-
-v2 (docs/PLAN-V2.md, E1 to E5) implemented. Verified on the sandbox: two agents in parallel (PRs #12, #13), an owner message injected mid-task and acted on, permission prompts answered from Inbox and from the run route, pause and resume, take over and hand back (session resumed with --resume), a quick task, a crew_post between agents. Earlier: MVP loop (onboarding PR #1, PRs #4, #5).
-
-Not yet verified live: crew_ask (blocking answers), permission timeout, removing an agent mid-run, Kill from the Wall, file lock between two real orders, the Wall in a browser at 380px, push notifications.
-
-## Next (Phase D, still open)
-
-1. Done: HTTPS through Tailscale Serve (see Status). The phone needs the Tailscale app connected.
-2. Install the PWA on the phone, turn on notifications, confirm a push arrives.
-3. Try a Reviewer rejection path and the kill switch on live runs (parallel agents are verified).
-4. Optional: rename and delete for Command chats, a project settings screen (PATCH /api/projects/:id exists), login rate limit.
-
-Skipped for MVP on purpose: autonomy levels 2 and 3, GitHub App and webhooks, schedules, Usage screen, templates, contracts checking, collaborators.
