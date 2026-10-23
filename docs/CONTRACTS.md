@@ -1,4 +1,4 @@
-# Agent Crew: internal contracts
+# Agent Office: internal contracts
 
 This file pins how the modules talk to each other. Each module has one owner during the build; do not change another module's file. If you need something from another module, code against the signature below.
 
@@ -220,7 +220,7 @@ Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once
 - Agent profile: form for every profile field (owned/readonly paths as one glob per line), notes list + add note, recent tasks, recent runs with their result text (read-only "talk to this agent" view).
 - Inbox: open items newest first, one-tap actions per kind (see API), link to GitHub, answer box for questions. Toggle to show resolved.
 - Projects screen when there is no project yet: input "owner/repo" -> POST /api/projects, show onboarding status.
-- PWA: manifest (name "Agent Crew", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
+- PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
 
 ## v2 additions (docs/PLAN-V2.md, phases E1 to E5)
 

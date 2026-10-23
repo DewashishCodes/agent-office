@@ -264,7 +264,7 @@ export async function approvePlan(order_id, tasks = null) {
     try {
       issues.push(await createIssue(project, {
         title: s.title,
-        body: `${s.description}\n\n### Acceptance\n${s.acceptance.map(c => `- [ ] ${c}`).join('\n')}\n\n_Part of: ${plan.summary || order.text}. Planned by Agent Crew._`,
+        body: `${s.description}\n\n### Acceptance\n${s.acceptance.map(c => `- [ ] ${c}`).join('\n')}\n\n_Part of: ${plan.summary || order.text}. Planned by Agent Office._`,
       }))
     } catch (e) { issues.push(null); log(pid, 'error', `Issue for "${s.title}" failed: ${e.message}`, { order_id }) }
   }

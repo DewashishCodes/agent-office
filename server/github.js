@@ -127,7 +127,7 @@ export async function prComment(project, number, body) {
 }
 
 export async function closePR(project, number) {
-  await gh('pr', 'close', String(number), '-R', project.repo, '--comment', 'Canceled by the owner in Agent Crew.', '--delete-branch')
+  await gh('pr', 'close', String(number), '-R', project.repo, '--comment', 'Canceled by the owner in Agent Office.', '--delete-branch')
 }
 
 export async function mergePR(project, number) {

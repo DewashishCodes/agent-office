@@ -1,7 +1,7 @@
 self.addEventListener('push', e => {
   let d = {}
   try { d = e.data.json() } catch { d = { body: e.data ? e.data.text() : '' } }
-  e.waitUntil(self.registration.showNotification(d.title || 'Agent Crew', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Agent Office', {
     body: d.body || '', icon: '/icon.svg', badge: '/icon.svg', data: { url: d.url || '/' },
   }))
 })

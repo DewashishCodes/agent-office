@@ -444,7 +444,7 @@ function status(e, b) {
     run('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'rate_limit', value)
   }
   const a = getAgent(e.agent_id)
-  return `Agent Crew: ${a?.name || e.kind}, run ${e.run_id}${e.task_id ? `, task ${e.task_id}` : ''}`
+  return `Agent Office: ${a?.name || e.kind}, run ${e.run_id}${e.task_id ? `, task ${e.task_id}` : ''}`
 }
 
 function turnEnd(e, b) {

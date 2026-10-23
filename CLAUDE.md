@@ -1,4 +1,4 @@
-# Agent Crew
+# Agent Office
 
 Phone-first web app that runs a team of Claude Code agents on a GitHub repo. The owner gives orders to one Orchestrator, approves its plan, specialist agents build the tasks as PRs, Reviewer and QA check them, the owner merges from the Inbox. Source PRD: PRD Phase 1 MVP (F1 to F11).
 

@@ -123,7 +123,7 @@ function prBody(t) {
     `### Acceptance\n${t.acceptance.map(c => `- [ ] ${c}`).join('\n')}`,
     deps.length && `### Merge first\n${deps.map(d => `- #${d.pr_number} ${d.title}`).join('\n')}`,
     t.issue_number && `Closes #${t.issue_number}`,
-    '_Opened by Agent Crew._',
+    '_Opened by Agent Office._',
   ].filter(Boolean).join('\n\n')
 }
 

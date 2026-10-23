@@ -1,4 +1,4 @@
-# Agent Crew
+# Agent Office
 
 Run a team of Claude Code agents on your GitHub repo and manage them from your phone.
 

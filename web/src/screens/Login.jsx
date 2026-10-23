@@ -13,7 +13,7 @@ export default function Login({ onDone }) {
     <main className="login">
       <form className="card stack" onSubmit={submit}>
         <img src="/icon.svg" alt="" width="48" height="48" />
-        <h1>Agent Crew</h1>
+        <h1>Agent Office</h1>
         <label className="field">
           <span>Owner token</span>
           <input type="password" autoComplete="current-password" required value={token} onChange={e => setToken(e.target.value)} autoFocus />

@@ -1,6 +1,6 @@
 {
-  "name": "Agent Crew",
-  "short_name": "Crew",
+  "name": "Agent Office",
+  "short_name": "Office",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
