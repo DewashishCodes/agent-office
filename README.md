@@ -1,18 +1,16 @@
 <div align="center">
 
-<img src="web/public/icon.svg" width="96" height="96" alt="Agent Office logo" />
+<img src="docs/banner.svg" width="100%" alt="Agent Office: a dev team of Claude Code agents you run from your phone" />
 
-# Agent Office
+<br />
 
-**A dev team of Claude Code agents you run from your phone.**
-
-You give the order. They plan, build, review and test it as pull requests. You tap merge.
+**You give the order. They plan, build, review and test it as pull requests. You tap merge.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-d97757)](LICENSE)
 [![Node 24](https://img.shields.io/badge/node-24-6bd46d)](https://nodejs.org)
 [![Claude Code](https://img.shields.io/badge/runs%20on-Claude%20Code-d97757)](https://claude.com/claude-code)
-[![PWA](https://img.shields.io/badge/phone-PWA-6aa8f0)](#-phone-access)
-[![Platform](https://img.shields.io/badge/tested%20on-Windows%2011-a89e8e)](#-platform)
+[![PWA](https://img.shields.io/badge/phone-PWA-6aa8f0)](#phone-access)
+[![Platform](https://img.shields.io/badge/tested%20on-Windows%2011-a89e8e)](#platform)
 
 <!-- Owner: replace with the GIF cut from the launch reel. -->
 <img src="docs/demo.gif" width="720" alt="Agent Office demo" />
@@ -21,7 +19,7 @@ You give the order. They plan, build, review and test it as pull requests. You t
 
 ---
 
-## ✨ How it works
+## How it works
 
 <table>
 <tr>
@@ -42,57 +40,57 @@ You give the order. They plan, build, review and test it as pull requests. You t
 
 ```mermaid
 flowchart LR
-    You(["📱 You"]) -->|order| Lead["🧭 Orchestrator"]
+    You(["You"]) -->|order| Lead["Orchestrator"]
     Lead -->|plan| You
     You -->|approve| Lead
-    Lead --> A["🛠️ Backend"]
-    Lead --> B["🎨 Frontend"]
-    Lead --> C["🧪 Tests"]
-    A & B & C -->|pull request| R["🔍 Reviewer"]
-    R -->|approve| Q["✅ QA"]
+    Lead --> A["Backend"]
+    Lead --> B["Frontend"]
+    Lead --> C["Tests"]
+    A & B & C -->|pull request| R["Reviewer"]
+    R -->|approve| Q["QA"]
     R -.->|changes| A
-    Q -->|pass| Inbox["📥 Needs you"]
+    Q -->|pass| Inbox["Needs you"]
     Inbox -->|merge| GH[("GitHub")]
 ```
 
-## 🏢 More than a dev team
+## More than a dev team
 
 Tech is always open. Add floors as you need them. Each floor has its own lead, workers and reviewer, writes Markdown under its own folder, and ships PRs the same way code does.
 
 | Floor | What it makes |
 |---|---|
-| 🧡 **Tech** | The product: code, tests, specs |
-| 💜 **Design** | UX flows, wireframes, UI specs, HTML mockups, design tokens |
-| 💙 **Docs** | User guides, help center, API reference, changelogs |
-| 💛 **Marketing** | Positioning, website copy, blog posts, launch drafts |
-| 💚 **Sales** | Ideal customer profile, pitch, outreach drafts |
-| 🩵 **Customer** | Onboarding guides, FAQ, support replies |
-| ❤️ **Legal** | Terms, privacy policy, compliance checklists (all drafts) |
-| 🤎 **Ops & Finance** | Runway and pricing models, budgets, processes |
-| 🍏 **Research** | Market and competitor research, interview synthesis |
+| **Tech** | The product: code, tests, specs |
+| **Design** | UX flows, wireframes, UI specs, HTML mockups, design tokens |
+| **Docs** | User guides, help center, API reference, changelogs |
+| **Marketing** | Positioning, website copy, blog posts, launch drafts |
+| **Sales** | Ideal customer profile, pitch, outreach drafts |
+| **Customer** | Onboarding guides, FAQ, support replies |
+| **Legal** | Terms, privacy policy, compliance checklists (all drafts) |
+| **Ops & Finance** | Runway and pricing models, budgets, processes |
+| **Research** | Market and competitor research, interview synthesis |
 
 Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="28" alt="" /> for chores: run the tests, start a dev server, query a database. No plan, no PR.
 
-## 📱 What you see
+## What you see
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-**🏠 Office.** Every agent at a desk, animated by what it is doing right now. Tap one to open its live terminal.
+**Office.** Every agent at a desk, animated by what it is doing right now. Tap one to open its live terminal.
 
-**💬 Command.** Chat with each floor's lead. Plans arrive as cards.
+**Command.** Chat with each floor's lead. Plans arrive as cards.
 
-**📋 Board.** Kanban of every task, from planned to merged.
+**Board.** Kanban of every task, from planned to merged.
 
 </td>
 <td width="50%" valign="top">
 
-**🙋 Needs you.** Plans to approve, permission prompts, questions and PRs to merge.
+**Needs you.** Plans to approve, permission prompts, questions and PRs to merge.
 
-**👥 Team.** Hire, pause or remove agents; pick each one's model and effort.
+**Team.** Hire, pause or remove agents; pick each one's model and effort.
 
-**🗂️ Vault.** Notes and decisions the whole team can search.
+**Vault.** Notes and decisions the whole team can search.
 
 </td>
 </tr>
@@ -108,7 +106,7 @@ Agents also talk to each other: they pass notes, ask the lead questions, and ask
 <img src="web/public/clawd/tests-pass/loop.gif" width="72" alt="" />
 </p>
 
-## 🚀 Quickstart
+## Quickstart
 
 You need:
 
@@ -130,7 +128,7 @@ npm run build && npm start
 
 Open **http://localhost:5190**, log in with your `OWNER_TOKEN`, and add a project. All state lives in `data/`; delete it to start over.
 
-## 📲 Phone access
+## Phone access
 
 Use [Tailscale Serve](https://tailscale.com/kb/1312/serve) for HTTPS inside your private tailnet:
 
@@ -143,22 +141,22 @@ Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected
 > [!CAUTION]
 > Never expose port 5190 to the open internet: no port forwarding, no public tunnels. Anyone who gets in can run commands on your computer through the agents.
 
-## 🔒 Security
+## Security
 
 > [!WARNING]
 > Agents run real commands on your machine with your git and GitHub credentials. Read this before you start.
 
 | | |
 |---|---|
-| 🙋 **Approvals** | Agents edit files in their own worktree freely. Shell commands outside a safe list and file access outside the worktree ask you first. Unanswered requests are denied after 15 minutes. |
-| 🚫 **Deny rules** | Always on: no `git push`, no `gh`, no `.env`, nothing under protected paths (`.env*`, keys, `secrets/`, `.github/workflows/`, `migrations/`). The server does the pushing. |
-| 📁 **Owned paths** | After each task, a gate checks every changed file against the agent's owned paths and sends the task back if anything is outside. |
-| 🔀 **Merges are yours** | Work arrives as pull requests. The exception is hotfix mode, turned on per order: it skips review and pushes straight to the project branch (never forced). |
-| ⚠️ **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
-| 🔑 **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. |
-| 🛑 **Kill switch** | One per project. Stops every session at once. |
+| **Approvals** | Agents edit files in their own worktree freely. Shell commands outside a safe list and file access outside the worktree ask you first. Unanswered requests are denied after 15 minutes. |
+| **Deny rules** | Always on: no `git push`, no `gh`, no `.env`, nothing under protected paths (`.env*`, keys, `secrets/`, `.github/workflows/`, `migrations/`). The server does the pushing. |
+| **Owned paths** | After each task, a gate checks every changed file against the agent's owned paths and sends the task back if anything is outside. |
+| **Merges are yours** | Work arrives as pull requests. The exception is hotfix mode, turned on per order: it skips review and pushes straight to the project branch (never forced). |
+| **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
+| **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. |
+| **Kill switch** | One per project. Stops every session at once. |
 
-## 💸 Costs
+## Costs
 
 No backend, no fees. Every session runs on **your own Claude plan** and counts against its usage limits. Pick a model and effort level per agent, and set daily token budgets per project and per agent in Settings; when a budget runs out, no new tasks start until the next day.
 
@@ -167,11 +165,11 @@ No backend, no fees. Every session runs on **your own Claude plan** and counts a
 The header shows what you spent today and how much of your 5-hour limit is used.
 <br clear="left" />
 
-## 🖥️ Platform
+## Platform
 
 Built and tested on **Windows 11**. macOS and Linux are **untested**: the code has paths for them, but nobody has run a full order there yet. Reports and fixes are welcome.
 
-## 🛠️ Development
+## Development
 
 ```bash
 npm run dev:server        # API on 5190, restarts on change
@@ -181,10 +179,10 @@ npm test                  # node:test with a fake claude CLI, no real sessions
 
 [`CLAUDE.md`](CLAUDE.md) has the architecture, conventions and gotchas. [`docs/CONTRACTS.md`](docs/CONTRACTS.md) has the module contracts. Design history is in [`docs/history/`](docs/history/).
 
-## 🙏 Credits
+## Credits
 
 The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit. Agent Office is not affiliated with or endorsed by Anthropic.
 
-## 📄 License
+## License
 
 [AGPL-3.0](LICENSE). If you run a modified version for others over a network, you must share its source.
