@@ -770,12 +770,21 @@ app.use((err, req, res, next) => {
 })
 
 if (import.meta.main) {
-  ensureSupport()
-  recoverServices()
-  process.on('exit', stopAllServices)
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0))
-  initNotify()
-  start()
   const port = process.env.PORT || 5190
-  app.listen(port, () => console.log(`Agent Office on http://localhost:${port}`))
+  // Boot recovery and the scheduler only start once the port is ours: a second server on the same data/ would
+  // otherwise reset the first one's running tasks and start runs nobody can reach.
+  // Express 5 calls this on a listen error too, with the error.
+  app.listen(port, err => {
+    if (err) {
+      console.error(err.code === 'EADDRINUSE' ? `Port ${port} is in use: is Agent Office already running? Set PORT in .env to run a second copy.` : err.message)
+      process.exit(1)
+    }
+    ensureSupport()
+    recoverServices()
+    process.on('exit', stopAllServices)
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0))
+    initNotify()
+    start()
+    console.log(`Agent Office on http://localhost:${port}`)
+  })
 }
