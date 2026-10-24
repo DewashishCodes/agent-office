@@ -143,6 +143,8 @@ ode.exe" "--env-file-if-exists=.env" "server\index.js"`, set the app directory t
 
 The service must run as your user so it sees your `git`, `claude` and `gh` logins.
 
+A service manager can watch `http://localhost:5190/api/health`. Server output also goes to `data/server.log` (rotated at 10 MB), and Settings has **Download backup** for a snapshot of the database.
+
 ## Phone access
 
 Use [Tailscale Serve](https://tailscale.com/kb/1312/serve) for HTTPS inside your private tailnet:
