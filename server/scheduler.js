@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
-import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
+import { runClaude, tokensToday, projectTokensToday, projectCostToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
 import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
@@ -219,6 +219,14 @@ function tickProject(p) {
     if (oncePerDay(`budget:p${p.id}`)) {
       log(p.id, 'budget', 'Project daily token budget reached; no new tasks start until tomorrow.')
       addInbox(p.id, 'question', 'Project daily token budget reached', { body: 'Raise project_daily_token_budget in settings or wait until tomorrow.' })
+    }
+    return
+  }
+  const dollars = p.settings.project_daily_cost_budget
+  if (dollars != null && projectCostToday(p.id) >= dollars) {
+    if (oncePerDay(`cost:p${p.id}`)) {
+      log(p.id, 'budget', `Project daily cost budget ($${dollars}) reached; no new tasks start until tomorrow.`)
+      addInbox(p.id, 'question', 'Project daily cost budget reached', { body: 'Raise the daily cost budget in Settings or wait until tomorrow.' })
     }
     return
   }
