@@ -252,7 +252,7 @@
   .s-r2::after { width: 40px; height: 3px; }
 }
 
-/* Agent switcher above the terminal, layout presets at its end. */
+/* Agent switcher above the terminal, the layout menu at its end. */
 .term-strip { display: flex; align-items: center; gap: 8px; }
 .strip-tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 /* The right edge fades so a clipped floor or agent reads as "scroll for more". */
