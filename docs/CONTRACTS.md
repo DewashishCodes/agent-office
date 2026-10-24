@@ -176,7 +176,7 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | GET | /api/projects/:id/tasks?agent_id=&order_id= | tasks with `agent_name` |
 | GET | /api/tasks/:id | task + `activity` + `runs` |
 | GET | /api/tasks/:id/diff | `{ diff }` from `prDiff` (404 without a PR, 502 when gh fails) |
-| POST | /api/tasks/:id/retry | attempts 0, notes '', status planned, kick |
+| POST | /api/tasks/:id/retry `{note?}` | attempts 0, status planned, kick; notes '' or, with a note, the last notes plus `From the owner: <note>` (shown to the agent as Notes for this task). The failure inbox `retry` action takes the note as `text`. |
 | GET | /api/templates | `TEMPLATES` |
 | GET | /api/projects/:id/agents | active agents, each with `tokens_today`, `current_task` (title of its in_progress task or null), `last_event` of its running run |
 | POST | /api/projects/:id/agents `{role? , ...fields}` | from template by role merged with fields, or from scratch (role 'custom') |
