@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { emit } from './bus.js'
 
@@ -228,6 +228,16 @@ for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, 
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
+// Terminal logs go with them; prompt files belong to runs, and no run survives a restart.
+const sweep = (dir, maxAge = 0) => {
+  if (!existsSync(dir)) return
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f)
+    try { if (!maxAge || statSync(p).mtimeMs < Date.now() - maxAge) rmSync(p, { force: true }) } catch {}
+  }
+}
+sweep(join(DATA_DIR, 'pty'), 14 * 86400000)
+sweep(join(DATA_DIR, 'prompts'))
 
 // Settings saves the whole form, so projects that saved once kept the old wide default; they follow the new one again.
 const OLD_BASH = '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b'
