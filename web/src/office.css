@@ -190,7 +190,7 @@
 
 /* Phone: the room first, then orders, kanban (swipe), config. A desk opens its terminal in a sheet. */
 @media (max-width: 899px) {
-  .room { --s: .6; height: 62vh; min-height: 380px; }
+  .room { --s: .6; flex: none; height: 62vh; min-height: 380px; }
   .floor-desks { gap: 22px 10px; padding: 62px 8px 18px; }
   .hq-orders { order: 1; }
   .hq-kanban { order: 2; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
