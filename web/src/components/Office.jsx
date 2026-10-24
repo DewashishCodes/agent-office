@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useEvents } from '../api.js'
-import { ago, initials } from '../ui.jsx'
+import { Ago, initials } from '../ui.jsx'
 import { clawdFor, clawdUrl } from '../clawd.js'
 
 const FLIGHT_MS = 1200
@@ -163,7 +163,7 @@ export function CrewThread({ crew }) {
           <li key={m.id} className={`cm ${mine ? 'mine' : ''} ${first ? 'first' : ''}`} style={{ '--hue': hue(m.from_agent_id) }}>
             {first && <span className="avatar sm" aria-hidden="true">{initials(m.from_name || 'You')}</span>}
             <div className="cm-body">
-              {first && <div className="cm-meta"><b>{m.from_name || 'You'}</b> to {to}{m.kind !== 'message' && <span className="pill">{m.kind}</span>} <span className="muted">{ago(m.created_at)}</span></div>}
+              {first && <div className="cm-meta"><b>{m.from_name || 'You'}</b> to {to}{m.kind !== 'message' && <span className="pill">{m.kind}</span>} <span className="muted"><Ago at={m.created_at} /></span></div>}
               <p className="cm-bubble pre">{m.text}</p>
             </div>
           </li>
