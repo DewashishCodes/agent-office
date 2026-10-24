@@ -12,7 +12,7 @@ export default function Login({ onDone }) {
   return (
     <main className="login">
       <form className="card stack" onSubmit={submit}>
-        <img src="/icon.svg" alt="" width="48" height="48" />
+        <img src="/icon.svg" alt="" width="64" height="64" />
         <h1>Agent Office</h1>
         <label className="field">
           <span>Owner token</span>

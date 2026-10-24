@@ -1,7 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#1f1b16"/>
-  <circle cx="256" cy="176" r="56" fill="#f4efe3"/>
-  <circle cx="148" cy="320" r="44" fill="#d97757"/>
-  <circle cx="364" cy="320" r="44" fill="#d97757"/>
-  <path d="M256 232v64M200 300l-20 10M312 300l20 10" stroke="#f4efe3" stroke-width="20" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="ao-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3229"/><stop offset="1" stop-color="#14110d"/></linearGradient>
+    <linearGradient id="ao-cone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb08a" stop-opacity=".55"/><stop offset="1" stop-color="#d97757" stop-opacity="0"/></linearGradient>
+    <linearGradient id="ao-paper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#d8cfbd"/></linearGradient>
+    <filter id="ao-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+    <clipPath id="ao-sq"><rect width="512" height="512" rx="116"/></clipPath>
+  </defs>
+  <g clip-path="url(#ao-sq)">
+    <rect width="512" height="512" fill="url(#ao-bg)"/>
+    <polygon points="200,170 312,170 440,384 72,384" fill="url(#ao-cone)"/>
+    <rect x="40" y="384" width="432" height="34" fill="#3d3128"/><rect x="40" y="384" width="432" height="4" fill="#6b584a"/>
+    <rect x="0" y="418" width="512" height="94" fill="#15110d"/>
+    <rect x="84" y="258" width="152" height="104" rx="10" fill="#0f0c09" stroke="#cfc6b6" stroke-width="6"/>
+    <rect x="96" y="270" width="128" height="80" rx="4" fill="#1a1612"/>
+    <path d="M112 296l20 14-20 14" fill="none" stroke="#d97757" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="144" y="304" width="30" height="12" fill="#d97757"/>
+    <rect x="148" y="362" width="24" height="14" fill="#cfc6b6"/><rect x="118" y="376" width="84" height="8" rx="3" fill="#cfc6b6"/>
+    <ellipse cx="298" cy="386" rx="62" ry="8" fill="#000" opacity=".35"/>
+    <g fill="#e8906e"><rect x="236" y="322" width="14" height="22" rx="3"/><rect x="346" y="322" width="14" height="22" rx="3"/><rect x="256" y="370" width="14" height="14"/><rect x="280" y="370" width="14" height="14"/><rect x="304" y="370" width="14" height="14"/><rect x="328" y="370" width="14" height="14"/></g>
+    <rect x="250" y="300" width="96" height="72" rx="10" fill="#e8906e"/>
+    <rect x="250" y="356" width="96" height="16" fill="#c4654a" opacity=".6"/>
+    <rect x="258" y="300" width="80" height="5" fill="#ffc2a3" opacity=".8"/>
+    <rect x="272" y="324" width="14" height="8" fill="#1f1b16"/><rect x="310" y="324" width="14" height="8" fill="#1f1b16"/>
+    <ellipse cx="408" cy="384" rx="38" ry="10" fill="#9a9184"/><ellipse cx="408" cy="380" rx="38" ry="10" fill="#cfc6b6"/>
+    <path d="M408 378C408 300 384 236 284 174" fill="none" stroke="#cfc6b6" stroke-width="11" stroke-linecap="round"/>
+    <ellipse cx="256" cy="172" rx="62" ry="12" fill="#d97757" filter="url(#ao-glow)" opacity=".9"/>
+    <polygon points="192,172 320,172 292,118 220,118" fill="url(#ao-paper)"/>
+    <ellipse cx="256" cy="172" rx="64" ry="10" fill="#ffb08a"/>
+    <rect x="4" y="4" width="504" height="504" rx="112" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="3"/>
+  </g>
 </svg>

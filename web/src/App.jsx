@@ -95,7 +95,7 @@ function Shell() {
       {project && (
         <nav className="tabs" aria-label="Main">
           <div className="brand">
-            <img src="/icon.svg" alt="" width="24" height="24" /><span className="brand-name">Agent Office</span>
+            <img src="/favicon.svg" alt="" width="24" height="24" /><span className="brand-name">Agent Office</span>
             <button type="button" className="nav-toggle" onClick={toggleNav} aria-expanded={navOpen} aria-label={navOpen ? 'Collapse sidebar' : 'Expand sidebar'} title={navOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={navOpen ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></svg>
             </button>
