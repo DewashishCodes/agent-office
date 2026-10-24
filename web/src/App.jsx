@@ -8,7 +8,6 @@ import Board from './screens/Board.jsx'
 import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
 import Inbox from './screens/Inbox.jsx'
-import Wall from './screens/Wall.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
@@ -16,13 +15,13 @@ import Onboarding from './screens/Onboarding.jsx'
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
   command: 'M4 5h16v11H9l-5 4z',
-  wall: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6',
+  team: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6',
   board: 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z',
   inbox: 'M4 13l2.5-8h11l2.5 8v6H4zM4 13h5l1 2h4l1-2h5',
 }
-const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['wall', 'Agents'], ['board', 'Board']]
+const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['team', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
+const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -80,10 +79,10 @@ function Shell({ restarted }) {
   let screen
   if (showProjects) screen = <Projects projects={projects} current={pid} reload={reloadProjects} onPick={(id, hash = '#/home') => { choose(id); location.hash = hash }} />
   else if (view === 'board') screen = <Board key={route.id} {...ctx} orderId={route.id} />
-  else if (view === 'team') screen = <Team {...ctx} />
+  // The Wall folded into Home and Team; old #/wall links land on Team.
+  else if (view === 'team' || view === 'wall') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} />
-  else if (view === 'wall') screen = <Wall {...ctx} />
   else if (view === 'vault') screen = <Vault {...ctx} />
   else if (view === 'onboarding') screen = <Onboarding {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
