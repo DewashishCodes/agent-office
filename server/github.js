@@ -91,8 +91,9 @@ export async function changedFiles(path, base_sha) {
   return out ? out.split('\n').map(f => f.trim().replaceAll('\\', '/')).filter(Boolean) : []
 }
 
-async function pushBranchNow(path, branch) {
-  await git(path, 'push', '-u', 'origin', branch)
+// force: after the agent rebased its branch to resolve conflicts; --force-with-lease never overwrites someone else's push.
+async function pushBranchNow(path, branch, { force = false } = {}) {
+  await git(path, 'push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch)
 }
 
 const numberFromUrl = url => Number(url.trim().split('/').pop())
