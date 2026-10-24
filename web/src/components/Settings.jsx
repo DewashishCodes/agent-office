@@ -44,6 +44,7 @@ export default function Settings({ project, onClose, reload }) {
       <form className="stack" onSubmit={save}>
         <p className="muted small">{project.repo}</p>
         <BranchPicker project={project} reload={reload} />
+        <p className="small"><a className="btn small" href="/api/backup" download>Download backup</a> <span className="muted">Every project, order, task and run in one file.</span></p>
         <label className="field"><span>Name</span><input value={f.name} onChange={set('name')} required /></label>
         <div className="grid2">
           <label className="field"><span>Daily token budget for the project</span><input type="number" min="0" step="1000000" value={f.budget} onChange={set('budget')} required /></label>
