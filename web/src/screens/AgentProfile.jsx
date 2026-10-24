@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, taskStatus, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
 import Terminal from '../components/Terminal.jsx'
 import ModelEffort from '../components/ModelEffort.jsx'
@@ -108,7 +108,7 @@ export default function AgentProfile({ pid, id }) {
         {a.tasks?.length ? (
           <ul className="feed">
             {a.tasks.map(t => (
-              <li key={t.id} className="row"><span className="mono small">#{t.id}</span><span className="grow">{t.title}</span><Badge status={t.status} /></li>
+              <li key={t.id} className="row"><span className="mono small">#{t.id}</span><span className="grow">{t.title}</span><Badge status={taskStatus(t)} /></li>
             ))}
           </ul>
         ) : <Empty>No tasks yet</Empty>}
