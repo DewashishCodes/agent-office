@@ -3,7 +3,8 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join, resolve, dirname, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
+import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now, DATA_DIR } from './db.js'
+import { teeConsole } from './logfile.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
 import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
@@ -835,6 +836,8 @@ app.use((err, req, res, next) => {
 })
 
 if (import.meta.main) {
+  // After the first-boot token message, so the token never lands in the log file.
+  teeConsole(join(DATA_DIR, 'server.log'))
   const port = process.env.PORT || 5190
   // Boot recovery and the scheduler only start once the port is ours: a second server on the same data/ would
   // otherwise reset the first one's running tasks and start runs nobody can reach.
