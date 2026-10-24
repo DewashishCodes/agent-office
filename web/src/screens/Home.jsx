@@ -119,9 +119,10 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
   const preset = f => { const r = box.current.getBoundingClientRect(); setLay({ c1: null, c3: null, r2: null, ...f(r.width, r.height) }) }
 
   return (
-    <section className="hq" ref={box} style={wide ? layStyle : undefined}>
+    <section className={`hq ${items?.length ? 'has-needs' : ''}`} ref={box} style={wide ? layStyle : undefined}>
       <section className="hq-space" aria-label="Agent space">
         <ErrorText error={wallError} />
+        {!wide && items?.length > 0 && <NeedsStrip items={items} onOpen={() => setSheet('needs')} />}
         {wall && <FloorBar open={open} agents={everyone} floor={floor.key} onPick={k => { setFloor(k); setSelected(null) }}
           onAdd={() => setSheet('floor')} canAdd={open.length < (floors?.length || 0)} />}
         {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected} floor={floor}
@@ -191,6 +192,20 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       )}
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
     </section>
+  )
+}
+
+const ACT = { plan: 'Review plan', merge: 'Review merge', permission: 'Answer', question: 'Answer', failure: 'See failure' }
+
+// Phones: what needs the owner sits above the room instead of a scroll away.
+function NeedsStrip({ items, onOpen }) {
+  const first = items[0]
+  return (
+    <div className="needs-strip" role="status">
+      <span className="count">{items.length}</span>
+      <span className="clip grow">{first.title}</span>
+      <Button small variant="primary" onClick={onOpen}>{items.length > 1 ? 'Open all' : ACT[first.kind] || 'Open'}</Button>
+    </div>
   )
 }
 
