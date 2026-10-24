@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import { Ago, Button, ConfirmButton, Empty, ErrorText, useAction } from '../ui.jsx'
 import Working from './Working.jsx'
 import { Md } from './Transcript.jsx'
 import { ServiceLog } from './Terminal.jsx'
@@ -32,7 +32,7 @@ export function SupportThread({ pid, support, floor = 'tech', onSentToTeam }) {
               <Button small variant="primary" disabled={busy} onClick={() => toTeam(m.suggest)}>Send to the team</Button>
             </div>
           )}
-          <span className="sp-meta">{m.role === 'user' ? 'You' : 'Support'}, {ago(m.created_at)}
+          <span className="sp-meta">{m.role === 'user' ? 'You' : 'Support'}, <Ago at={m.created_at} />
             {m === lastReply && lastAsk && lastAsk.id < m.id && !working && (
               <button type="button" className="linkish" disabled={busy} onClick={retry} title="Ask the same thing again on Sonnet">Try again with Sonnet</button>
             )}
@@ -78,7 +78,7 @@ export function ServicesSheetBody({ pid }) {
               <i className={`svc-dot ${s.status}`} /><b>{s.name}</b> <span className="mono small muted">{s.command}</span>
             </button>
             <span className="row wrap small">
-              <span className="muted">{s.status}{s.status === 'exited' && s.exit_code != null ? ` (code ${s.exit_code})` : ''}, {ago(s.started_at)}</span>
+              <span className="muted">{s.status}{s.status === 'exited' && s.exit_code != null ? ` (code ${s.exit_code})` : ''}, <Ago at={s.started_at} /></span>
               {s.url && s.status === 'running' && <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>}
               <span className="grow" />
               {s.status === 'running'
