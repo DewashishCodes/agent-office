@@ -5,6 +5,7 @@ import Terminal from '../components/Terminal.jsx'
 import { CrewThread } from '../components/Office.jsx'
 import '../office.css'
 import QuickTask from '../components/QuickTask.jsx'
+import PermissionCard from '../components/Permission.jsx'
 import '../wall.css'
 
 const WALL_EVENTS = ['agent', 'order', 'task', 'run', 'crew_message']
@@ -140,17 +141,6 @@ export function Tile({ a, expanded, onExpand, onQuick }) {
 }
 
 export function Permission({ runId, req, who }) {
-  const [run, busy, error] = useAction()
-  const answer = allow => run(() => api(`/runs/${runId}/permission`, { method: 'POST', body: { request_id: req.request_id, allow } }))
-  return (
-    <div className="permission">
-      <p className="small">{who ? <b>{who}</b> : null} asks to run</p>
-      <pre className="code">{req.tool_name === 'Bash' ? req.input?.command : `${req.tool_name} ${JSON.stringify(req.input)}`}</pre>
-      <div className="actions">
-        <Button small variant="primary" disabled={busy} onClick={() => answer(true)}>Allow</Button>
-        <Button small disabled={busy} onClick={() => answer(false)}>Deny</Button>
-      </div>
-      <ErrorText error={error} />
-    </div>
-  )
+  return <PermissionCard req={req} who={who}
+    onAnswer={(allow, remember) => api(`/runs/${runId}/permission`, { method: 'POST', body: { request_id: req.request_id, allow, remember } })} />
 }
