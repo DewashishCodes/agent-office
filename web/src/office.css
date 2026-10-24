@@ -265,13 +265,6 @@
 .strip-tab:hover { color: var(--text); }
 .strip-tab[aria-selected="true"] { color: var(--accent-text); background: var(--accent); }
 .strip-tab .light { box-shadow: none; }
-.presets { flex: 0 0 auto; display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--surface-2); }
-.presets button {
-  display: inline-grid; place-items: center; min-height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 6px; cursor: pointer;
-  font: 10px/1 var(--pixel); text-transform: uppercase; color: var(--muted); background: none;
-}
-.presets button:hover { color: var(--accent); background: var(--surface); }
-.presets svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Needs you: anything waiting on the owner pulses until answered. */
 @keyframes needs { 0% { box-shadow: 0 0 0 0 rgb(255 107 94 / .65); } 70%, 100% { box-shadow: 0 0 0 9px rgb(255 107 94 / 0); } }
