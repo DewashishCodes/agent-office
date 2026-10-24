@@ -5,8 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env server/index.js",
-    "dev:server": "node --env-file=.env --watch server/index.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev:server": "node --env-file-if-exists=.env --watch server/index.js",
     "dev:web": "vite",
     "build": "vite build",
     "test": "node --test \"test/*.test.js\"",
