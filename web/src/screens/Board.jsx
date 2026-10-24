@@ -27,9 +27,9 @@ export default function Board({ pid, project, orderId }) {
   const mode = picked || (tasks && !tasks.some(inFlight) ? 'shipped' : 'flight')
 
   const shown = (tasks || []).filter(t => (!agent || String(t.agent_id) === agent) && (!order || String(t.order_id) === order))
-  // Phone list: one group per order, newest first, finished work hidden unless asked for.
+  // Phone list: one group per order, newest first, finished work hidden unless asked for; blocked work is in the banner.
   const groups = (orders || []).filter(o => !order || String(o.id) === order).map(o => ({
-    o, list: shown.filter(t => t.order_id === o.id && t.status !== 'canceled' && (showDone || t.status !== 'done')),
+    o, list: shown.filter(t => t.order_id === o.id && !['canceled', 'blocked'].includes(t.status) && (showDone || t.status !== 'done')),
   })).filter(g => g.list.length)
   const card = t => <TaskCard key={t.id} t={t} onOpen={() => setOpenId(t.id)} />
 
@@ -65,6 +65,12 @@ export default function Board({ pid, project, orderId }) {
         </label>
       </div>
       <ErrorText error={error} />
+      {blocked.length > 0 && (
+        <section className="banner blocked-banner" aria-label="Blocked">
+          <b>{blocked.length} blocked</b>
+          <div className="list">{blocked.map(card)}</div>
+        </section>
+      )}
       <div className="board-list stack">
         {tasks && !groups.length && <Empty>{showDone ? 'No tasks yet.' : 'Nothing in flight. Done tasks are hidden.'}</Empty>}
         {groups.map(({ o, list }) => (
@@ -78,12 +84,6 @@ export default function Board({ pid, project, orderId }) {
           </details>
         ))}
       </div>
-      {blocked.length > 0 && (
-        <section className="banner blocked-banner" aria-label="Blocked">
-          <b>{blocked.length} blocked</b>
-          <div className="list">{blocked.map(card)}</div>
-        </section>
-      )}
       <div className="board">
         {COLS.map(([id, name, f]) => [id, name, shown.filter(f)]).filter(([, , list]) => list.length).map(([id, name, list]) => (
           <section key={id} className="column" aria-label={name}>
