@@ -145,6 +145,15 @@ app.post('/api/login', (req, res) => {
   res.json({ ok: true })
 })
 
+// Health for a service manager or a curl on this machine: loopback without a cookie, everyone else logs in first.
+// Tailscale Serve proxies from loopback too, so a forwarded request is not local.
+const health = (req, res) => res.json({
+  ok: true, uptime: Math.round(process.uptime()), projects: get('SELECT COUNT(*) n FROM projects').n,
+  running_runs: get(`SELECT COUNT(*) n FROM runs WHERE status = 'running'`).n,
+})
+app.get('/api/health', (req, res, next) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['x-forwarded-for'] ? health(req, res) : next())
+
 app.use('/api', (req, res, next) => {
   const c = Buffer.from((req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('crew='))?.slice(5) || '')
   if (c.length !== SESSION.length || !timingSafeEqual(c, Buffer.from(SESSION))) throw fail(401, 'not logged in')
@@ -154,6 +163,8 @@ app.use('/api', (req, res, next) => {
 // running stays 1 in kv until a clean exit, so the next boot knows the last one crashed, lost power or slept.
 const booted = Date.now(), unclean = get(`SELECT value FROM kv WHERE key = 'running'`)?.value === '1'
 // restarted: an unclean restart under a minute ago, for a one-line hint in the UI.
+app.get('/api/health', health)
+
 app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
 app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
 
