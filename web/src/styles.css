@@ -400,3 +400,15 @@ h1 .count { vertical-align: middle; }
 }
 .branch-pick { align-items: flex-end; }
 .hotfix-toggle { display: flex; align-items: center; gap: 6px; }
+.badge.s-ci-pass { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.badge.s-ci-fail { background: var(--err-soft); color: var(--err); }
+.badge.s-ci-pending { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.task-facts { align-items: center; }
+.task-facts .badge { text-transform: none; }
+.diff { font-family: var(--mono); font-size: 12px; line-height: 1.45; overflow-x: auto; margin: 0; }
+.diff span { display: block; padding: 0 6px; white-space: pre; width: max-content; min-width: 100%; }
+.diff .d-add { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.diff .d-del { background: var(--err-soft); }
+.diff .d-hunk { color: var(--accent); }
+.diff .d-file { font-weight: 700; margin-top: 12px; border-top: 1px solid var(--surface-2); padding-top: 6px; }
+.diff .d-meta { color: var(--muted); }
