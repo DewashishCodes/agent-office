@@ -336,7 +336,10 @@ app.post('/api/projects/:id/messages', (req, res) => {
   res.status(202).json({ ok: true, chat_id })
 })
 
-app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*,
+// What an order has cost so far: every run of its tasks, review and QA included.
+const ORDER_COST = `(SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE task_id IN (SELECT id FROM tasks WHERE order_id = o.id)) cost_usd`
+
+app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*, ${ORDER_COST},
   (SELECT COUNT(*) FROM tasks WHERE order_id = o.id) total, (SELECT COUNT(*) FROM tasks WHERE order_id = o.id AND status = 'done') done
   FROM orders o WHERE project_id = ? ORDER BY id DESC`, project(req).id)))
 
@@ -344,7 +347,7 @@ const order = req => found(getOrder(int(req.params.id)), 'order')
 
 app.get('/api/orders/:id', (req, res) => {
   const o = order(req)
-  res.json({ ...o, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
+  res.json({ ...get(`SELECT ${ORDER_COST} FROM orders o WHERE id = ?`, o.id), ...o, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
 })
 
 app.post('/api/orders/:id/approve', async (req, res) => {
@@ -460,7 +463,7 @@ app.get('/api/projects/:id/wall', (req, res) => {
     run: get(`SELECT r.*, t.title task_title FROM runs r LEFT JOIN tasks t ON t.id = r.task_id
       WHERE r.agent_id = ? ORDER BY r.status = 'running' DESC, r.id DESC`, a.id) ?? null,
   }))
-  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status NOT IN ('done', 'rejected', 'canceled') ORDER BY id DESC`, p.id).map(o => ({
+  const orders = all(`SELECT o.*, ${ORDER_COST} FROM orders o WHERE project_id = ? AND status NOT IN ('done', 'rejected', 'canceled') ORDER BY id DESC`, p.id).map(o => ({
     ...o, counts: Object.fromEntries(all('SELECT status, COUNT(*) n FROM tasks WHERE order_id = ? GROUP BY status', o.id).map(c => [c.status, c.n])),
   }))
   const permissions = all(`SELECT r.id run_id, r.pending_permission, a.name agent_name FROM runs r LEFT JOIN agents a ON a.id = r.agent_id
