@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api, on, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import TaskFacts from '../components/TaskFacts.jsx'
+import RetryNote from '../components/RetryNote.jsx'
 
 const COLS = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['done', 'Done'], ['blocked', 'Blocked']]
 
@@ -117,6 +118,7 @@ function TaskSheet({ id, pid, repo, onClose }) {
           {!['done', 'canceled'].includes(t.status) && !t.merged && (
             <div className="actions">
               {t.status === 'blocked' && <Button variant="primary" disabled={busy} onClick={retry}>Retry task</Button>}
+              {t.status === 'blocked' && <RetryNote onRetry={async note => { await api(`/tasks/${id}/retry`, { method: 'POST', body: { note } }); reload() }} />}
               <ConfirmButton variant="ghost" confirm="Cancel this task for good" disabled={busy} onConfirm={cancel}>Cancel task</ConfirmButton>
               <ErrorText error={actError} />
             </div>
