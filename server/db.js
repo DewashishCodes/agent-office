@@ -221,6 +221,17 @@ addColumn('messages', 'chat_id', 'INTEGER')                     // command messa
 addColumn('orders', 'chat_id', 'INTEGER')                       // the chat the plan was made in
 addColumn('orders', 'hotfix', 'INTEGER NOT NULL DEFAULT 0')     // 1 = tasks push straight to the project branch, no PR, review or QA
 
+// The scheduler tick, the Home screen and the Inbox read these every few seconds; after columns, since some are new.
+db.exec(`
+CREATE INDEX IF NOT EXISTS tasks_project_status ON tasks (project_id, status);
+CREATE INDEX IF NOT EXISTS runs_agent ON runs (agent_id, status, started_at);
+CREATE INDEX IF NOT EXISTS runs_project ON runs (project_id, started_at);
+CREATE INDEX IF NOT EXISTS runs_task ON runs (task_id);
+CREATE INDEX IF NOT EXISTS inbox_project_status ON inbox (project_id, status);
+CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id);
+CREATE INDEX IF NOT EXISTS crew_messages_to ON crew_messages (to_agent_id, delivered);
+`)
+
 // Command history from before chats becomes one "Earlier chat" per floor.
 for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, floor, MIN(created_at) first, MAX(created_at) last FROM messages
   WHERE channel = 'command' AND chat_id IS NULL GROUP BY project_id, floor`).all()) {
