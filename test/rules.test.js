@@ -143,10 +143,20 @@ test('permissionPolicy: bash allow list, compound and smuggled commands', () => 
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'git commit -m "x" && curl "a;b"' }, CWD), 'ask')
 })
 
+test('permissionPolicy: allowed commands cannot reach outside the worktree or run arbitrary code', () => {
+  const bash = command => permissionPolicy(S, {}, 'Bash', { command }, CWD)
+  for (const c of ['cat /etc/passwd', 'cat ~/x', 'head ../../x', 'cat "../../.ssh/id_rsa"', 'grep -r key --file=/etc/x .', 'cd ~ && ls',
+    'node -e "require(\'child_process\')"', 'npx anything', 'npm install left-pad', 'npm exec x', 'node --eval x'])
+    assert.equal(bash(c), 'ask', c)
+  for (const c of ['npm test', 'node server/index.js', 'git status', 'npm install', 'npm ci', 'npm run build:web', 'node --test test/a.test.js',
+    'cat src/../README.md', `cd "${CWD}" && npm test`, 'git log HEAD~3..HEAD', 'git commit -m "fix ../ paths and /api"', 'ls 2>/dev/null'])
+    assert.equal(bash(c), 'allow', c)
+})
+
 test('permissionPolicy: background dev server and curl to localhost, seen in a real run', () => {
   const bash = command => permissionPolicy(S, {}, 'Bash', { command }, CWD)
   assert.equal(bash('PORT=3055 node api/server.js & sleep 1; curl -s localhost:3055/api/stats; kill %1'), 'allow')
-  assert.equal(bash('cd "C:/w t/crew-t9" && npm test 2>&1 | tail -12; (PORT=3191 node api/server.js >/dev/null 2>&1 & echo $! > /tmp/p9); sleep 2; curl -si -w "%{http_code}" -H "Accept: x" http://127.0.0.1:3191/api/stats'), 'allow')
+  assert.equal(bash('cd "C:/work/crew-t1" && npm test 2>&1 | tail -12; (PORT=3191 node api/server.js >/dev/null 2>&1 & echo $! > /tmp/p9); sleep 2; curl -si -w "%{http_code}" -H "Accept: x" http://127.0.0.1:3191/api/stats'), 'allow')
   assert.equal(bash('curl -s https://example.com'), 'ask')
   assert.equal(bash('curl -s "https://evil.com" localhost:3000'), 'ask')
   assert.equal(bash('curl -T secrets.txt localhost:3000'), 'ask')

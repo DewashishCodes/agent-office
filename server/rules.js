@@ -93,7 +93,7 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
     return 'allow'
   }
   if (tool === 'Bash') {
-    const parts = bashParts(input.command)
+    const parts = bashParts(input.command, { cwd })
     if (!parts) return 'ask'
     const ok = new RegExp(settings.auto_allow_bash)
     return parts.every(s => ok.test(s) || localCurl(s)) ? 'allow' : 'ask'
@@ -102,9 +102,9 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
 }
 
 // A Bash command as its simple parts, or null when it can hide another command (substitutions) or reach outside the
-// worktree (find -exec/-delete, redirects out of it). Quoted strings and heredoc bodies are data: they keep their words
-// but lose separators.
-function bashParts(command, { noRedirects = false } = {}) {
+// worktree (find -exec/-delete, redirects or path arguments out of it). Quoted strings and heredoc bodies are data: they
+// keep their words but lose separators.
+function bashParts(command, { noRedirects = false, cwd } = {}) {
   const cmd = String(command || '').trim()
   // Substitutions can hide any command inside an allowed one. Quoted heredocs ('EOF') and single quotes never expand.
   const literal = cmd.replace(/<<-?\s*(['"])(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, '<<\n').replace(/'[^']*'/g, "''")
@@ -115,8 +115,22 @@ function bashParts(command, { noRedirects = false } = {}) {
   // Read-only callers: any write redirect (other than to /dev/null or 2>&1) is a write.
   if (noRedirects && /(^|[^0-9&])>+(?!\s*\/dev\/null|&)/.test(bare)) return null
   // Split on && || ; | newlines and a lone & (not 2>&1); drop subshell parens and VAR=value prefixes.
-  return bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
+  const parts = bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
     .map(s => s.trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').replace(/^(\w+=\S*\s+)+/, '').trim()).filter(Boolean)
+  return parts.some(p => outsideArg(p, cwd)) ? null : parts
+}
+
+// An allowed command (cat, head) is only as safe as the files it is pointed at: an argument that is absolute, starts
+// with ~ or climbs with .. must stay inside cwd. A quoted string with spaces (a commit message) counts only when it
+// starts like a path.
+function outsideArg(part, cwd) {
+  return (part.match(/"(\\.|[^"\\])*"|'[^']*'|\S+/g) || []).some(tok => {
+    const t = tok.replace(/^(["'])([\s\S]*)\1$/, '$2').replace(/^\d*[<>]+&?/, '').replace(/^-[\w-]*=/, '')
+    const message = /^["']/.test(tok) && /\s/.test(t)
+    const pathy = /^([/\\~]|[A-Za-z]:[/\\])/.test(t) || (!message && /(^|[/\\])\.\.([/\\]|$)/.test(t))
+    if (!pathy || /^\/dev\/null$|^\/tmp\//.test(t)) return false
+    return t.startsWith('~') || !cwd || inside(cwd, t) === null
+  })
 }
 
 // Commands Support may run without asking: they look, they never change anything.
@@ -146,7 +160,7 @@ export function supportPolicy(settings, tool, input = {}, cwd) {
     return r === null ? 'ask' : 'allow'
   }
   if (tool === 'Bash') {
-    const parts = bashParts(input.command, { noRedirects: true })
+    const parts = bashParts(input.command, { noRedirects: true, cwd })
     if (!parts) return 'ask'
     return parts.every(s => (LOOK.test(s) && !/^(find|rg|grep)\b.*\s-(delete|exec)/.test(s)) || localCurl(s) || readOnlySql(s)) ? 'allow' : 'ask'
   }
