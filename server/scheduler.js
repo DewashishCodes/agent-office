@@ -346,6 +346,21 @@ export async function mergeTask(task_id) {
   return getTask(t.id)
 }
 
+// "Resolve conflicts": the author takes the task back on the same branch to rebase it onto the project branch. Not an
+// attempt. Its order goes back to in progress so integration (and the merge cards) run again once it passes review.
+export function resolveConflicts(task_id) {
+  const t = getTask(task_id)
+  if (t.merged || t.status !== 'done' || !t.pr_number) throw new Error('Only a finished task with an open PR can be sent back to resolve conflicts')
+  const project = getProject(t.project_id)
+  for (const i of all(`SELECT id FROM inbox WHERE order_id = ? AND kind = 'merge' AND status = 'open'`, t.order_id)) resolveInbox(i.id)
+  if (getOrder(t.order_id).status === 'ready_to_merge') setOrder(t.order_id, { status: 'in_progress' })
+  const notes = `Your PR conflicts with ${project.default_branch}. Run git rebase origin/${project.default_branch} (the server already fetched), resolve every conflict, git add the files, continue with GIT_EDITOR=true git rebase --continue, run the tests, and make sure everything is committed. Do not push; the server pushes.`
+  log(t.project_id, 'task', `Sent "${t.title}" back to resolve conflicts with ${project.default_branch}`, { task_id: t.id, order_id: t.order_id })
+  const out = setTask(t.id, { status: 'planned', conflict: 2, notes })
+  kick()
+  return out
+}
+
 // A finished or dropped task's worktree is dead weight under data/worktrees. Canceled runs get a moment to exit first:
 // Windows keeps files of a dying process locked.
 function dropWorktree(t, delay = 0) {
