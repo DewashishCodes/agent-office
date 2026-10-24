@@ -329,7 +329,12 @@ export async function mergeTask(task_id) {
   if (t.depends_on.length) {
     const open = t.depends_on.map(getTask).filter(d => d && !d.merged && d.status !== 'canceled')
     if (open.length) throw new Error(`Merge ${open.map(d => `#${d.pr_number || d.id} "${d.title}"`).join(', ')} first: this PR builds on it.`)
-    if (t.worktree && t.base_sha) t = setTask(t.id, { base_sha: await restack(t.worktree, t.base_sha, t.branch, project.default_branch) })
+    if (t.worktree && t.base_sha) {
+      try { t = setTask(t.id, { base_sha: await restack(t.worktree, t.base_sha, t.branch, project.default_branch) }) } catch (e) {
+        setTask(t.id, { conflict: 1 })
+        throw e
+      }
+    }
   }
   for (let i = 0; ; i++) {
     try { await mergePR(project, t.pr_number); break } catch (e) {
