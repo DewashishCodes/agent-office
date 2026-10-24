@@ -10,7 +10,8 @@
     "dev:web": "vite",
     "build": "vite build",
     "test": "node --test \"test/*.test.js\"",
-    "smoke:web": "node scripts/smoke-web.mjs"
+    "smoke:web": "node scripts/smoke-web.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.15",
