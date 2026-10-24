@@ -148,13 +148,15 @@ Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected
 
 | | |
 |---|---|
-| **Approvals** | Agents edit files in their own worktree freely. Shell commands outside a safe list and file access outside the worktree ask you first. Unanswered requests are denied after 15 minutes. |
+| **Approvals** | Agents edit files in their own worktree freely. Shell commands outside a safe list, or pointed at paths outside the worktree, and file access outside the worktree ask you first. Unanswered requests are denied after 15 minutes. |
 | **Deny rules** | Always on: no `git push`, no `gh`, no `.env`, nothing under protected paths (`.env*`, keys, `secrets/`, `.github/workflows/`, `migrations/`). The server does the pushing. |
 | **Owned paths** | After each task, a gate checks every changed file against the agent's owned paths and sends the task back if anything is outside. |
 | **Merges are yours** | Work arrives as pull requests. The exception is hotfix mode, turned on per order: it skips review and pushes straight to the project branch (never forced). |
 | **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
 | **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. |
 | **Kill switch** | One per project. Stops every session at once. |
+
+These are guardrails against accidents, not a sandbox against a determined model. An agent runs as you, with your git and `gh` credentials, and anything it can run (a test script it just edited, `node`, `make`) can reach whatever you can. The safe list refuses paths outside the worktree, but a program it writes and runs is not checked. Run the crew under a separate OS user or in a VM if that matters for your repo.
 
 ## Costs
 

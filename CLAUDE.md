@@ -46,6 +46,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 
 - Child processes (agents, services) get the env without OWNER_TOKEN, PORT and CREW_* (`runner.childEnv`): a dev server would otherwise bind the crew port, and agents could read the token.
 - Terminal runs need the native `claude.exe` on PATH (or `CREW_CLAUDE_PTY_BIN`). The child env drops the `CLAUDE_CODE_*` markers a parent session leaves, or the CLI stops saving its transcript (tokens and run_events would stay empty).
+- Permission rules are guardrails, not a sandbox: an allowed command (`node file`, `npm run x`) runs code the agent can edit. `bashParts` refuses absolute, `~` and `..` arguments outside the cwd for every allowed command.
 - Task agents and QA run with `acceptEdits`: Bash outside the `auto_allow_bash` list and file access outside the worktree ask the owner (Inbox, Wall). Deny rules (`git push`, `gh`, `.env`, protected paths) apply in every mode. An agent marked autonomous goes back to `bypassPermissions`.
 - `npm test` uses `test/fake-claude.mjs` via `CREW_CLAUDE_BIN`; no real sessions in tests.
 - `node --test test/` fails on Node 24 (treated as a file); the script uses the `"test/*.test.js"` glob.
