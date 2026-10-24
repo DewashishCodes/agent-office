@@ -174,6 +174,7 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | POST | /api/orders/:id/revise `{feedback}` | `revisePlan` (202) |
 | POST | /api/orders/:id/reject | `rejectPlan` |
 | GET | /api/projects/:id/tasks?agent_id=&order_id= | tasks with `agent_name` |
+| GET | /api/projects/:id/shipped | merged tasks newest first (300): `merged_at` (or updated_at for old rows), `agent_name`, `order_title`, `cost_usd`, `tokens` |
 | GET | /api/tasks/:id | task + `activity` + `runs` |
 | GET | /api/tasks/:id/diff | `{ diff }` from `prDiff` (404 without a PR, 502 when gh fails) |
 | POST | /api/tasks/:id/resolve | `resolveConflicts`: a done task with an open PR goes back to planned with `conflict = 2` and rebase notes, no attempt counted; the order's open merge cards close and a ready_to_merge order returns to in_progress. The resolving run fetches, may `git rebase`, and is pushed with `--force-with-lease`. Also the merge inbox action `resolve`. `tasks.conflict = 1` is set by integration (CONFLICTING) or a restack failure at merge. |
@@ -257,7 +258,7 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 ### Schema
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
-- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`, `conflict`. `inbox`: `run_id`, `ref`.
+- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`, `conflict`, `merged_at`. `inbox`: `run_id`, `ref`.
 - Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget).
 
 ### Routes
