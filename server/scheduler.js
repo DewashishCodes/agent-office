@@ -183,14 +183,14 @@ async function runTask(task_id) {
   const bad = files.filter(f => !isAllowed(f, agent.owned_paths, project.settings.protected_paths))
   if (bad.length) {
     log(project.id, 'gate', `Gate rejected "${t.title}": ${bad.join(', ')}`, { task_id, agent_id: agent.id })
-    return failTask(task_id, `These files are outside your owned paths or inside protected paths. Revert every change to them (git checkout ${base_sha} -- <file>, or git rm for new files) and commit:\n${bad.map(f => `- ${f}`).join('\n')}`)
+    return failTask(task_id, `These files are outside your owned paths or inside protected paths. Revert every change to them (git checkout ${t.base_sha} -- <file>, or git rm for new files) and commit:\n${bad.map(f => `- ${f}`).join('\n')}`)
   }
 
   // Canceled while the run was wrapping up: no PR, no review.
   if (getTask(task_id).status === 'canceled') return
   if (getOrder(t.order_id)?.hotfix) {
     // Never forced: a protected branch or one that moved mid-push fails the task to the Inbox instead.
-    t = setTask(task_id, { base_sha: await rebaseOnto(wt.path, base_sha, branch, project.default_branch) })
+    t = setTask(task_id, { base_sha: await rebaseOnto(wt.path, t.base_sha, branch, project.default_branch) })
     await pushTo(wt.path, `${branch}:refs/heads/${project.default_branch}`)
     t = setTask(task_id, { status: 'done' })
     issueStatus(project, t, 'done')
