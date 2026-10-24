@@ -127,6 +127,8 @@ function prBody(t) {
   ].filter(Boolean).join('\n\n')
 }
 
+const RESTARTED = 'The crew server restarted while you were working. Check git status and git log, then continue the task and end with a short summary.'
+
 async function runTask(task_id) {
   let t = getTask(task_id)
   const project = getProject(t.project_id)
@@ -151,7 +153,13 @@ async function runTask(task_id) {
   // Feedback on a retry goes into the same session when the last one ended cleanly: it already knows the code it wrote.
   const prev = t.attempts && t.notes ? get(`SELECT session_id, status, agent_id FROM runs WHERE task_id = ? AND kind = 'task' ORDER BY id DESC`, task_id) : null
   let r = null
-  if (prev?.session_id && prev.status === 'ok' && prev.agent_id === agent.id) {
+  // A restart cut the last session off: the same agent picks it up, anyone else starts fresh.
+  const cut = t.resume_session
+  if (cut) t = setTask(task_id, { resume_session: null })
+  if (cut && get('SELECT agent_id FROM runs WHERE session_id = ? ORDER BY id DESC', cut)?.agent_id === agent.id) {
+    r = await runClaude({ ...common, resume: cut, prompt: RESTARTED })
+    if (!r.ok && !r.stopped && !getProject(project.id).paused) r = null
+  } else if (prev?.session_id && prev.status === 'ok' && prev.agent_id === agent.id) {
     r = await runClaude({ ...common, resume: prev.session_id, prompt: `Your work came back (attempt ${t.attempts + 1} now). Fix these points on the same branch, run the tests again, commit, and end with a short summary.\n\n${t.notes}` })
     if (!r.ok && !r.stopped && !getProject(project.id).paused) r = null
   }
@@ -435,6 +443,11 @@ export function resumeChecks(project_id = null) {
 
 // Boot: no child survives a restart, so running rows are stale. A restart is never the task's fault, so no attempt is counted.
 export function recover() {
+  // The agent's context survives in its session; picking it up again is cheaper than starting from the prompt.
+  for (const t of all(`SELECT id, agent_id FROM tasks WHERE status = 'in_progress'`)) {
+    const r = get(`SELECT session_id FROM runs WHERE task_id = ? AND kind = 'task' AND agent_id = ? AND session_id IS NOT NULL ORDER BY id DESC`, t.id, t.agent_id)
+    if (r) update('tasks', t.id, { resume_session: r.session_id })
+  }
   run(`UPDATE runs SET status = 'error', pending_permission = NULL, ended_at = ? WHERE status = 'running'`, now())
   run(`UPDATE inbox SET status = 'done', resolved_at = ? WHERE kind = 'permission' AND status = 'open'`, now())
   for (const a of all(`SELECT id FROM agents WHERE status = 'working'`)) setAgent(a.id, { status: 'idle' })
