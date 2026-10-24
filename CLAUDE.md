@@ -5,11 +5,12 @@ Phone-first web app that runs a team of Claude Code agents on a GitHub repo. The
 ## Run
 
 ```
-cp .env.example .env      # set OWNER_TOKEN to a long random string
 npm install
+npm run doctor            # host prerequisites, each with its fix
 npm run build             # builds web/ into web/dist
-npm start                 # http://localhost:5190, log in with OWNER_TOKEN
+npm start                 # http://localhost:5190; the first start writes OWNER_TOKEN to .env and prints it
 npm test                  # node:test with a fake claude CLI
+npm run smoke:web         # renders every screen once through Vite SSR
 ```
 Dev: `npm run dev:server` (5190, --watch) and `npm run dev:web` (Vite on 5191, proxies /api).
 
