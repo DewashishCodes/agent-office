@@ -100,6 +100,7 @@ export function Item({ i }) {
           {i.task_id && i.order_id && (
             <ConfirmButton confirm="Merge every PR of this order, in order" disabled={busy || orderMerge?.busy} onConfirm={() => mergeOrder(i.order_id)}>Merge whole order</ConfirmButton>
           )}
+          {task?.conflict === 1 && <Button disabled={busy || orderMerge?.busy} onClick={() => { setMerging(''); act('resolve') }}>Resolve conflicts</Button>}
           <Button variant="ghost" disabled={busy || orderMerge?.busy} onClick={() => { setMerging(''); act('dismiss') }}>Dismiss</Button>
         </div>
       )}
