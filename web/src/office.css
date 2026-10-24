@@ -255,6 +255,8 @@
 /* Agent switcher above the terminal, layout presets at its end. */
 .term-strip { display: flex; align-items: center; gap: 8px; }
 .strip-tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* The right edge fades so a clipped floor or agent reads as "scroll for more". */
+.strip-tabs { padding-right: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 .strip-tab {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
   font: 10px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
