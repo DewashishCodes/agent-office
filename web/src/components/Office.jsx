@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useEvents } from '../api.js'
-import { Ago, initials } from '../ui.jsx'
+import { Ago, Elapsed, initials } from '../ui.jsx'
 import { clawdFor, clawdUrl } from '../clawd.js'
 
 const FLIGHT_MS = 1200
@@ -124,7 +124,7 @@ function Station({ a, set, bubble, selected, onSelect }) {
         </span>
         <span className="desk" aria-hidden="true" />
         <span className="tag"><i className="light" />{a.name}</span>
-        <span className="doing clip">{doing}</span>
+        <span className="doing clip">{doing}{r?.status === 'running' && r.started_at && <> <Elapsed since={r.started_at} /></>}</span>
       </button>
     </li>
   )
