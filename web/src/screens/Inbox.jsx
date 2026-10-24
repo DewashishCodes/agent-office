@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, on, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import Working from '../components/Working.jsx'
 
 export default function Inbox({ pid }) {
   const [all, setAll] = useState(false)
@@ -26,6 +27,7 @@ const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Ques
 export function Item({ i }) {
   const [text, setText] = useState('')
   const [revising, setRevising] = useState(false)
+  const [merging, setMerging] = useState('')
   const [run, busy, error] = useAction()
   const act = (action, extra) => run(() => api(`/inbox/${i.id}/action`, { method: 'POST', body: { action, ...extra } }))
   const open = i.status === 'open'
@@ -62,14 +64,15 @@ export function Item({ i }) {
       )}
       {open && i.kind === 'merge' && (
         <div className="actions">
-          <ConfirmButton variant="primary" confirm="Squash and merge" disabled={busy} onConfirm={() => act('merge')}>Merge</ConfirmButton>
+          <ConfirmButton variant="primary" confirm="Squash and merge" disabled={busy} onConfirm={() => { setMerging('Merging. A PR that builds on others is rebased first, so this can take a minute.'); act('merge') }}>Merge</ConfirmButton>
           {i.task_id && i.order_id && (
             <ConfirmButton confirm="Merge every PR of this order, in order" disabled={busy}
-              onConfirm={() => run(() => api(`/orders/${i.order_id}/merge`, { method: 'POST' }))}>Merge whole order</ConfirmButton>
+              onConfirm={() => { setMerging('Merging every PR of this order, one at a time. This can take a few minutes.'); run(() => api(`/orders/${i.order_id}/merge`, { method: 'POST' })) }}>Merge whole order</ConfirmButton>
           )}
-          <Button variant="ghost" disabled={busy} onClick={() => act('dismiss')}>Dismiss</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => { setMerging(''); act('dismiss') }}>Dismiss</Button>
         </div>
       )}
+      {open && i.kind === 'merge' && busy && merging && <Working set="git-pr" text={merging} />}
       {open && i.kind === 'permission' && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('allow')}>Allow</Button>
