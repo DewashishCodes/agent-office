@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, useAction } from '../ui.jsx'
 import Working from '../components/Working.jsx'
 import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
@@ -67,7 +67,7 @@ export function Item({ i }) {
     <li className={`card inbox-item ${open ? '' : 'resolved'}`}>
       <div className="row wrap">
         <Badge status={i.kind}>{KIND[i.kind] || i.kind}</Badge>
-        <span className="muted small grow">{ago(i.created_at)}{!open && ', resolved'}</span>
+        <span className="muted small grow"><Ago at={i.created_at} />{!open && ', resolved'}</span>
         {i.link && <a className="small" href={i.link} target="_blank" rel="noreferrer">Open on GitHub</a>}
       </div>
       <h3>{i.title}</h3>
