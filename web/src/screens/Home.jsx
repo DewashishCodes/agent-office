@@ -185,7 +185,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
           <div className="stack">
             <div className="row"><span className="grow" /><PushButton /></div>
             {items?.length ? <ul className="list">{items.map(i => <Item key={i.id} i={i} />)}</ul> : <Empty>All clear. Nothing needs you right now.</Empty>}
-            <a className="small" href="#/inbox" onClick={close}>Inbox history</a>
+            <a className="small" href="#/inbox" onClick={close}>Open Needs you</a>
           </div>
         </Sheet>
       )}
