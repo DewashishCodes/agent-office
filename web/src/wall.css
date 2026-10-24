@@ -59,7 +59,6 @@ pre.code {
   font: 12px/1.4 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
 }
 
-.permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .crew-feed .pill { margin-left: 4px; }
 .msg.system .bubble { background: transparent; border-style: dashed; font-size: 14px; color: var(--muted); }
 

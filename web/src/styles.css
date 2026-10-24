@@ -412,3 +412,5 @@ h1 .count { vertical-align: middle; }
 .diff .d-hunk { color: var(--accent); }
 .diff .d-file { font-weight: 700; margin-top: 12px; border-top: 1px solid var(--surface-2); padding-top: 6px; }
 .diff .d-meta { color: var(--muted); }
+.permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.permission details pre { max-height: 240px; overflow: auto; }
