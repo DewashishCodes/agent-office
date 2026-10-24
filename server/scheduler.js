@@ -380,7 +380,7 @@ function dropWorktree(t, delay = 0) {
 export function markMerged(task_id) {
   const t = getTask(task_id)
   if (t.merged) return
-  setTask(t.id, { merged: 1 })
+  setTask(t.id, { merged: 1, merged_at: now() })
   dropWorktree(t)
   if (t.pr_number) log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
