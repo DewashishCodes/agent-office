@@ -150,10 +150,8 @@ function Header({ projects, project, detail, onPick, reload }) {
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
       </button>
-      {!project.paused && (
-        <ConfirmButton small variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all</ConfirmButton>
-      )}
       <More label="Menu">
+        {!project.paused && <ConfirmButton variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all agents</ConfirmButton>}
         <a className="btn ghost" href="#/projects">Projects</a>
         <Button variant="ghost" onClick={logout}>Log out</Button>
       </More>
