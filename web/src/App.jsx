@@ -32,16 +32,17 @@ function parseHash() {
 
 export default function App() {
   const [authed, setAuthed] = useState(null)
+  const [restarted, setRestarted] = useState(false)
   useEffect(() => {
     setAuthHandler(setAuthed)
-    api('/me').then(() => setAuthed(true), () => setAuthed(false))
+    api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, () => setAuthed(false))
   }, [])
   if (authed === null) return <div className="splash">Loading</div>
   if (!authed) return <Login onDone={() => setAuthed(true)} />
-  return <Shell />
+  return <Shell restarted={restarted} />
 }
 
-function Shell() {
+function Shell({ restarted }) {
   const [route, setRoute] = useState(parseHash)
   // Desktop sidebar: an icon rail unless the owner opens it; the choice sticks.
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem('crew.nav') === 'open' } catch { return false } })
@@ -115,6 +116,7 @@ function Shell() {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
+        {restarted && <p className="banner" role="status">The crew server just came back from a crash, power loss or sleep. Interrupted tasks went back in the queue. See Keep it running in the README.</p>}
         {view !== 'onboarding' && ['interviewing', 'proposed'].includes(p?.onboarding_status) && (
           <a className="banner onboard-banner" href="#/onboarding">{p.onboarding_status === 'proposed' ? 'Your office proposal is ready. Review and approve it.' : 'Onboarding is in progress. Answer the questions to set up your office.'}</a>
         )}
