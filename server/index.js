@@ -11,7 +11,7 @@ import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday
 import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder, ensureClone, pullDefault, listBranches, prDiff } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
+import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resolveConflicts, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
 import { matchAgent, loginLimiter, rememberPattern, estimates } from './rules.js'
@@ -438,6 +438,11 @@ app.get('/api/tasks/:id/diff', async (req, res) => {
   try { res.json({ diff: await prDiff(getProject(t.project_id), t.pr_number) }) } catch (e) { throw fail(502, e.message) }
 })
 
+app.post('/api/tasks/:id/resolve', (req, res) => {
+  const t = found(getTask(int(req.params.id)), 'task')
+  try { res.json(resolveConflicts(t.id)) } catch (e) { throw fail(409, e.message) }
+})
+
 app.post('/api/tasks/:id/cancel', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
   try { res.json(cancelTask(t.id)) } catch (e) { throw fail(409, e.message) }
@@ -769,6 +774,8 @@ app.post('/api/inbox/:id/action', async (req, res) => {
       background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`, floor, 'user', chatFor(item.project_id, floor, item.order_id)))
       status = 202
     }
+  } else if (key === 'merge:resolve') {
+    try { resolveConflicts(found(getTask(item.task_id), 'task').id) } catch (e) { throw fail(409, e.message) }
   } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'), typeof text === 'string' ? text.trim().slice(0, 4000) : undefined)
   else throw fail(400, `unknown action ${action} for ${item.kind}`)
   resolveInbox(item.id)
