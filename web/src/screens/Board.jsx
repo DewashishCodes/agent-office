@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, label, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, label, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import TaskFacts from '../components/TaskFacts.jsx'
 
 const COLS = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['done', 'Done'], ['blocked', 'Blocked']]
@@ -49,7 +49,7 @@ export default function Board({ pid, project, orderId }) {
           <details key={o.id} className="group" open>
             <summary>
               <span className="grow title clip">#{o.id} {o.plan?.summary || o.text}</span>
-              <Badge status={o.status} />
+              <Badge status={orderStatus(o)} />
               {o.total > 0 && <span className="muted small">{o.done}/{o.total}</span>}
             </summary>
             <div className="list">{list.map(card)}</div>
@@ -75,7 +75,7 @@ export default function Board({ pid, project, orderId }) {
 function TaskCard({ t, onOpen }) {
   return (
     <button type="button" className="task-card" onClick={onOpen}>
-      <span className="row"><span className="title grow">{t.title}</span><Badge status={t.status} /></span>
+      <span className="row"><span className="title grow">{t.title}</span><Badge status={taskStatus(t)} /></span>
       <span className="meta">
         <span className="mono">#{t.id}</span>
         <span className="pill">{t.size}</span>
@@ -83,7 +83,6 @@ function TaskCard({ t, onOpen }) {
         {t.attempts > 0 && <span className="warn">try {t.attempts + 1}</span>}
         {t.pr_number && <span>PR #{t.pr_number}</span>}
         {t.status === 'planned' && t.wait_reason && <span className="wait">{t.wait_reason}</span>}
-        {t.merged ? <span className="ok">merged</span> : null}
       </span>
     </button>
   )
@@ -104,11 +103,10 @@ function TaskSheet({ id, pid, repo, onClose }) {
       {!t ? <p className="muted">Loading</p> : (
         <div className="stack">
           <div className="row wrap">
-            <Badge status={t.status} />
+            <Badge status={taskStatus(t)} />
             <span className="pill">{t.role}</span>
             <span className="pill">size {t.size}</span>
             <span className="muted small">attempts {t.attempts}</span>
-            {t.merged ? <span className="ok small">merged</span> : null}
           </div>
           <div className="row wrap small">
             {t.pr_url && <a href={t.pr_url} target="_blank" rel="noreferrer">PR #{t.pr_number}</a>}
