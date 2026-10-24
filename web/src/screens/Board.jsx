@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import TaskFacts from '../components/TaskFacts.jsx'
 import RetryNote from '../components/RetryNote.jsx'
 import Shipped from '../components/Shipped.jsx'
@@ -166,7 +166,7 @@ function TaskSheet({ id, pid, repo, onClose }) {
                 {t.activity.map(a => (
                   <li key={a.id}>
                     <span className="pill">{a.kind}</span> {a.link ? <a href={a.link} target="_blank" rel="noreferrer">{a.text}</a> : a.text}
-                    <span className="muted small"> {ago(a.created_at)}</span>
+                    <span className="muted small"> <Ago at={a.created_at} /></span>
                   </li>
                 ))}
               </ul>
@@ -186,7 +186,7 @@ export function RunItem({ r }) {
           <Badge status={r.status} />
           <span className="pill">{r.kind}</span>
           <span className="grow mono small">{r.status === 'running' ? r.last_event : ''}</span>
-          <span className="muted small">{tokens(r.input_tokens + r.output_tokens)} tok, ${Number(r.cost_usd || 0).toFixed(2)}, {ago(r.started_at)}</span>
+          <span className="muted small">{tokens(r.input_tokens + r.output_tokens)} tok, ${Number(r.cost_usd || 0).toFixed(2)}, <Ago at={r.started_at} /></span>
         </summary>
         <p className="pre small">{r.result_text || r.last_event || 'No output yet'}</p>
       </details>
