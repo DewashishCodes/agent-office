@@ -315,3 +315,15 @@ export function rememberPattern(command) {
   if (OPEN_ENDED.test(prefix)) return { error: `${prefix} can run anything; allow it once instead.` }
   return { prefix, pattern: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b` }
 }
+
+// Fixed guesses until a project has finished tasks of a size; per task, review and QA runs included.
+const GUESS = { S: { tokens: 400000, cost: 0.5 }, M: { tokens: 1200000, cost: 1.5 }, L: { tokens: 3000000, cost: 4 } }
+const median = xs => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
+
+// Plan estimates per size from the project's own done tasks ({size, tokens, cost} each): the median, or a guess.
+export function estimates(rows = []) {
+  return Object.fromEntries(Object.entries(GUESS).map(([size, guess]) => {
+    const done = rows.filter(r => r.size === size)
+    return [size, done.length ? { tokens: median(done.map(r => r.tokens)), cost: median(done.map(r => r.cost)), n: done.length } : { ...guess, n: 0 }]
+  }))
+}

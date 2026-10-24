@@ -149,7 +149,7 @@ Tests (owner: Brain agent) in `test/*.test.js`: parseReply, matchAgent, readyTas
 ### server/index.js
 Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
 
-Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and sets cookie `crew=<sha256 of token>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires the cookie. `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout`.
+Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and sets cookie `crew=<sha256 of token>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires the cookie. `GET /api/health -> {ok, uptime, projects, running_runs}` (no cookie from loopback without X-Forwarded-For, else the cookie). `GET /api/backup` streams a `VACUUM INTO` snapshot of the database. Server output is also written to `data/server.log` (`server/logfile.js`, rotated to `.1` at 10 MB). `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout`.
 
 Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: "message" }` with 4xx/5xx. Long work (chat, onboarding, plan actions that run Claude) returns `202 {ok:true}` immediately and reports progress through SSE.
 
@@ -169,14 +169,16 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | GET | /api/projects/:id/messages | last 200, oldest first |
 | POST | /api/projects/:id/messages `{text}` | `orchestrator.chat` (202) |
 | GET | /api/projects/:id/orders | newest first |
-| GET | /api/orders/:id | order + its tasks |
+| GET | /api/orders/:id | order + its tasks + `cost_usd` (sum of its task runs) + `estimates` per size (`rules.estimates`, only while awaiting approval) |
 | POST | /api/orders/:id/approve `{tasks?}` | `approvePlan` |
 | POST | /api/orders/:id/revise `{feedback}` | `revisePlan` (202) |
 | POST | /api/orders/:id/reject | `rejectPlan` |
 | GET | /api/projects/:id/tasks?agent_id=&order_id= | tasks with `agent_name` |
+| GET | /api/projects/:id/shipped | merged tasks newest first (300): `merged_at` (or updated_at for old rows), `agent_name`, `order_title`, `cost_usd`, `tokens` |
 | GET | /api/tasks/:id | task + `activity` + `runs` |
 | GET | /api/tasks/:id/diff | `{ diff }` from `prDiff` (404 without a PR, 502 when gh fails) |
-| POST | /api/tasks/:id/retry | attempts 0, notes '', status planned, kick |
+| POST | /api/tasks/:id/resolve | `resolveConflicts`: a done task with an open PR goes back to planned with `conflict = 2` and rebase notes, no attempt counted; the order's open merge cards close and a ready_to_merge order returns to in_progress. The resolving run fetches, may `git rebase`, and is pushed with `--force-with-lease`. Also the merge inbox action `resolve`. `tasks.conflict = 1` is set by integration (CONFLICTING) or a restack failure at merge. |
+| POST | /api/tasks/:id/retry `{note?}` | attempts 0, status planned, kick; notes '' or, with a note, the last notes plus `From the owner: <note>` (shown to the agent as Notes for this task). The failure inbox `retry` action takes the note as `text`. |
 | GET | /api/templates | `TEMPLATES` |
 | GET | /api/projects/:id/agents | active agents, each with `tokens_today`, `current_task` (title of its in_progress task or null), `last_event` of its running run |
 | POST | /api/projects/:id/agents `{role? , ...fields}` | from template by role merged with fields, or from scratch (role 'custom') |
@@ -256,8 +258,8 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 ### Schema
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
-- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`. `inbox`: `run_id`, `ref`.
-- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex).
+- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`, `conflict`, `merged_at`. `inbox`: `run_id`, `ref`.
+- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget).
 
 ### Routes
 | Method | Path | Does |
@@ -273,7 +275,7 @@ Inbox: `permission` items take `allow | deny | dismiss` (`remember: true` with a
 `run_event {run_id, seq, type, json, created_at}`, `run_delta {run_id, text}` (live text, not stored), `crew_message` (row with from_name, to_name).
 
 ### Plans and scheduling
-Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends_on` may hold `"order:<id>/<key>"`. A ready task waits while a task of another order with overlapping files is in progress, review or QA (`wait_reason`). Restarts and removals never count an attempt; review and QA cut off by a restart or the kill switch run again (`resumeChecks`). A retry after review feedback resumes the last clean task session.
+Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends_on` may hold `"order:<id>/<key>"`. A ready task waits while a task of another order with overlapping files is in progress, review or QA (`wait_reason`). Restarts and removals never count an attempt; a task cut off by a restart keeps its session in `tasks.resume_session` and its next run resumes it (same agent only, fresh prompt if the resume fails); review and QA cut off by a restart or the kill switch run again (`resumeChecks`). A retry after review feedback resumes the last clean task session.
 
 ## v3 additions (docs/history/PLAN-V3.md)
 

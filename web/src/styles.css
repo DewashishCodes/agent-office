@@ -268,7 +268,7 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
   .board-page { max-width: none; width: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .filters { max-width: 560px; }
   .done-toggle, .board-list { display: none; }
-  .board { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; }
+  .board { flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 10px; overflow-x: auto; }
   .column { background: var(--surface-2); border-radius: var(--radius); padding: 10px; min-height: 0; overflow-y: auto; }
   .column h2 { position: sticky; top: -10px; margin: -10px -10px 0; padding: 10px; background: var(--surface-2); z-index: 1; }
   .column .task-card .badge { display: none; }
@@ -426,3 +426,8 @@ h1 .count { vertical-align: middle; }
 .term-switch { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .term-flip { position: absolute; top: 4px; right: 4px; z-index: 2; }
 .term-flip[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.week-totals { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.week-totals .card { display: flex; flex-direction: column; gap: 2px; }
+.shipped-item .title { font-weight: 600; }
+.blocked-banner { flex-direction: column; align-items: stretch; gap: 8px; }
+.board-page > .mode { align-self: flex-start; margin-bottom: 8px; }

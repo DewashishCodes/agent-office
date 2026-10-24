@@ -2,8 +2,9 @@ import express from 'express'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join, resolve, dirname, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
-import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now, DATA_DIR } from './db.js'
+import { teeConsole } from './logfile.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
 import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
@@ -11,10 +12,10 @@ import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday
 import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder, ensureClone, pullDefault, listBranches, prDiff } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
-import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
+import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resolveConflicts, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
-import { matchAgent, loginLimiter, rememberPattern } from './rules.js'
+import { matchAgent, loginLimiter, rememberPattern, estimates } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
@@ -68,6 +69,7 @@ const SETTINGS = {
   plan_approval_small: v => typeof v === 'boolean',
   digest_hour: v => v === null || count(0, 23)(v),
   project_daily_token_budget: count(0),
+  project_daily_cost_budget: v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0),
   permission_timeout_min: count(1, 24 * 60),
   question_timeout_min: count(1, 24 * 60),
   auto_allow_bash: regex,
@@ -101,10 +103,13 @@ function answer(run_id, request_id, allow, { message, remember } = {}) {
   log(add.project.id, 'settings', `"${add.prefix}" no longer asks for permission`)
 }
 
-// A retry goes ahead without dependencies the owner canceled; they would never finish.
-function retryTask(id) {
-  const deps = getTask(id).depends_on.filter(d => getTask(d)?.status !== 'canceled')
-  const t = setTask(id, { attempts: 0, notes: '', status: 'planned', depends_on: deps })
+// A retry goes ahead without dependencies the owner canceled; they would never finish. A note from the owner keeps
+// the last failure with it, so the agent sees both what went wrong and how the owner wants it fixed.
+function retryTask(id, note) {
+  const old = getTask(id)
+  const deps = old.depends_on.filter(d => getTask(d)?.status !== 'canceled')
+  const notes = note ? `${old.notes ? `${old.notes}\n\n` : ''}From the owner: ${note}` : ''
+  const t = setTask(id, { attempts: 0, notes, status: 'planned', depends_on: deps })
   kick()
   return t
 }
@@ -140,6 +145,15 @@ app.post('/api/login', (req, res) => {
   res.json({ ok: true })
 })
 
+// Health for a service manager or a curl on this machine: loopback without a cookie, everyone else logs in first.
+// Tailscale Serve proxies from loopback too, so a forwarded request is not local.
+const health = (req, res) => res.json({
+  ok: true, uptime: Math.round(process.uptime()), projects: get('SELECT COUNT(*) n FROM projects').n,
+  running_runs: get(`SELECT COUNT(*) n FROM runs WHERE status = 'running'`).n,
+})
+app.get('/api/health', (req, res, next) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['x-forwarded-for'] ? health(req, res) : next())
+
 app.use('/api', (req, res, next) => {
   const c = Buffer.from((req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('crew='))?.slice(5) || '')
   if (c.length !== SESSION.length || !timingSafeEqual(c, Buffer.from(SESSION))) throw fail(401, 'not logged in')
@@ -149,6 +163,15 @@ app.use('/api', (req, res, next) => {
 // running stays 1 in kv until a clean exit, so the next boot knows the last one crashed, lost power or slept.
 const booted = Date.now(), unclean = get(`SELECT value FROM kv WHERE key = 'running'`)?.value === '1'
 // restarted: an unclean restart under a minute ago, for a one-line hint in the UI.
+app.get('/api/health', health)
+
+// A consistent copy of the whole database: VACUUM INTO snapshots it even while runs write, then it streams and goes.
+app.get('/api/backup', (req, res) => {
+  const file = join(DATA_DIR, `backup-${Date.now()}.db`)
+  run('VACUUM INTO ?', file)
+  res.download(file, `agent-office-${new Date().toLocaleDateString('sv')}.db`, () => rmSync(file, { force: true }))
+})
+
 app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
 app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
 
@@ -332,7 +355,10 @@ app.post('/api/projects/:id/messages', (req, res) => {
   res.status(202).json({ ok: true, chat_id })
 })
 
-app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*,
+// What an order has cost so far: every run of its tasks, review and QA included.
+const ORDER_COST = `(SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE task_id IN (SELECT id FROM tasks WHERE order_id = o.id)) cost_usd`
+
+app.get('/api/projects/:id/orders', (req, res) => res.json(all(`SELECT o.*, ${ORDER_COST},
   (SELECT COUNT(*) FROM tasks WHERE order_id = o.id) total, (SELECT COUNT(*) FROM tasks WHERE order_id = o.id AND status = 'done') done
   FROM orders o WHERE project_id = ? ORDER BY id DESC`, project(req).id)))
 
@@ -340,7 +366,10 @@ const order = req => found(getOrder(int(req.params.id)), 'order')
 
 app.get('/api/orders/:id', (req, res) => {
   const o = order(req)
-  res.json({ ...o, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
+  // A plan waiting for approval gets estimates per size from this project's finished tasks.
+  const est = o.status === 'awaiting_approval' && estimates(all(`SELECT t.size, SUM(r.input_tokens + r.output_tokens) tokens, SUM(r.cost_usd) cost
+    FROM tasks t JOIN runs r ON r.task_id = t.id WHERE t.project_id = ? AND (t.status = 'done' OR t.merged = 1) GROUP BY t.id`, o.project_id))
+  res.json({ ...get(`SELECT ${ORDER_COST} FROM orders o WHERE id = ?`, o.id), ...o, estimates: est || null, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
 })
 
 app.post('/api/orders/:id/approve', async (req, res) => {
@@ -385,6 +414,16 @@ app.post('/api/orders/:id/reject', async (req, res) => {
 
 // Tasks
 
+// What the office delivered: merged tasks newest first, each with its agent, order and total run cost.
+app.get('/api/projects/:id/shipped', (req, res) => {
+  res.json(all(`SELECT t.id, t.title, t.pr_number, t.pr_url, t.order_id, COALESCE(t.merged_at, t.updated_at) merged_at, a.name agent_name,
+    COALESCE(o.plan ->> '$.summary', o.text) order_title,
+    (SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE task_id = t.id) cost_usd,
+    (SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM runs WHERE task_id = t.id) tokens
+    FROM tasks t LEFT JOIN agents a ON a.id = t.agent_id LEFT JOIN orders o ON o.id = t.order_id
+    WHERE t.project_id = ? AND t.merged = 1 ORDER BY merged_at DESC, t.id DESC LIMIT 300`, project(req).id))
+})
+
 app.get('/api/projects/:id/tasks', (req, res) => {
   const p = project(req), { agent_id, order_id } = req.query
   let sql = 'SELECT t.*, a.name agent_name FROM tasks t LEFT JOIN agents a ON a.id = t.agent_id WHERE t.project_id = ?'
@@ -428,6 +467,11 @@ app.get('/api/tasks/:id/diff', async (req, res) => {
   try { res.json({ diff: await prDiff(getProject(t.project_id), t.pr_number) }) } catch (e) { throw fail(502, e.message) }
 })
 
+app.post('/api/tasks/:id/resolve', (req, res) => {
+  const t = found(getTask(int(req.params.id)), 'task')
+  try { res.json(resolveConflicts(t.id)) } catch (e) { throw fail(409, e.message) }
+})
+
 app.post('/api/tasks/:id/cancel', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
   try { res.json(cancelTask(t.id)) } catch (e) { throw fail(409, e.message) }
@@ -435,7 +479,9 @@ app.post('/api/tasks/:id/cancel', (req, res) => {
 
 app.post('/api/tasks/:id/retry', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
-  res.json(retryTask(t.id))
+  const note = req.body?.note
+  if (note !== undefined && typeof note !== 'string') throw fail(400, 'note must be text')
+  res.json(retryTask(t.id, note?.trim().slice(0, 4000)))
 })
 
 // Wall: one request to boot the screen, SSE after that.
@@ -454,7 +500,7 @@ app.get('/api/projects/:id/wall', (req, res) => {
     run: get(`SELECT r.*, t.title task_title FROM runs r LEFT JOIN tasks t ON t.id = r.task_id
       WHERE r.agent_id = ? ORDER BY r.status = 'running' DESC, r.id DESC`, a.id) ?? null,
   }))
-  const orders = all(`SELECT * FROM orders WHERE project_id = ? AND status NOT IN ('done', 'rejected', 'canceled') ORDER BY id DESC`, p.id).map(o => ({
+  const orders = all(`SELECT o.*, ${ORDER_COST} FROM orders o WHERE project_id = ? AND status NOT IN ('done', 'rejected', 'canceled') ORDER BY id DESC`, p.id).map(o => ({
     ...o, counts: Object.fromEntries(all('SELECT status, COUNT(*) n FROM tasks WHERE order_id = ? GROUP BY status', o.id).map(c => [c.status, c.n])),
   }))
   const permissions = all(`SELECT r.id run_id, r.pending_permission, a.name agent_name FROM runs r LEFT JOIN agents a ON a.id = r.agent_id
@@ -757,7 +803,9 @@ app.post('/api/inbox/:id/action', async (req, res) => {
       background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`, floor, 'user', chatFor(item.project_id, floor, item.order_id)))
       status = 202
     }
-  } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'))
+  } else if (key === 'merge:resolve') {
+    try { resolveConflicts(found(getTask(item.task_id), 'task').id) } catch (e) { throw fail(409, e.message) }
+  } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'), typeof text === 'string' ? text.trim().slice(0, 4000) : undefined)
   else throw fail(400, `unknown action ${action} for ${item.kind}`)
   resolveInbox(item.id)
   res.status(status).json({ ok: true })
@@ -806,6 +854,8 @@ app.use((err, req, res, next) => {
 })
 
 if (import.meta.main) {
+  // After the first-boot token message, so the token never lands in the log file.
+  teeConsole(join(DATA_DIR, 'server.log'))
   const port = process.env.PORT || 5190
   // Boot recovery and the scheduler only start once the port is ours: a second server on the same data/ would
   // otherwise reset the first one's running tasks and start runs nobody can reach.

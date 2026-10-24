@@ -201,6 +201,9 @@ addColumn('runs', 'pending_permission', 'TEXT')                 // JSON array of
 addColumn('runs', 'terminal', 'INTEGER NOT NULL DEFAULT 0')                   // 1 = ran in a real terminal, replay from data/pty/run-<id>.log
 addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name the plan assigned; matchAgent prefers it
 addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
+addColumn('tasks', 'merged_at', 'TEXT')                         // when the PR merged; older rows fall back to updated_at
+addColumn('tasks', 'conflict', 'INTEGER NOT NULL DEFAULT 0')   // 1 = the PR conflicts with the project branch, 2 = the next run resolves it
+addColumn('tasks', 'resume_session', 'TEXT')                    // session cut off by a restart; the next run resumes it
 addColumn('tasks', 'checks', 'TEXT')                            // CI on the PR: pass | fail | pending | none, from the PR poll
 addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock
 addColumn('inbox', 'run_id', 'INTEGER')
@@ -217,6 +220,17 @@ addColumn('projects', 'rerun', 'INTEGER NOT NULL DEFAULT 0')    // 1 while a re-
 addColumn('messages', 'chat_id', 'INTEGER')                     // command messages only
 addColumn('orders', 'chat_id', 'INTEGER')                       // the chat the plan was made in
 addColumn('orders', 'hotfix', 'INTEGER NOT NULL DEFAULT 0')     // 1 = tasks push straight to the project branch, no PR, review or QA
+
+// The scheduler tick, the Home screen and the Inbox read these every few seconds; after columns, since some are new.
+db.exec(`
+CREATE INDEX IF NOT EXISTS tasks_project_status ON tasks (project_id, status);
+CREATE INDEX IF NOT EXISTS runs_agent ON runs (agent_id, status, started_at);
+CREATE INDEX IF NOT EXISTS runs_project ON runs (project_id, started_at);
+CREATE INDEX IF NOT EXISTS runs_task ON runs (task_id);
+CREATE INDEX IF NOT EXISTS inbox_project_status ON inbox (project_id, status);
+CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id);
+CREATE INDEX IF NOT EXISTS crew_messages_to ON crew_messages (to_agent_id, delivered);
+`)
 
 // Command history from before chats becomes one "Earlier chat" per floor.
 for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, floor, MIN(created_at) first, MAX(created_at) last FROM messages
@@ -250,6 +264,7 @@ export const DEFAULT_SETTINGS = {
   plan_approval_small: true,   // false = S-size plans auto-approve
   digest_hour: 8,              // local hour for the morning digest, null = off
   project_daily_token_budget: 20000000,
+  project_daily_cost_budget: null,  // dollars per local day, null = no limit
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
   auto_allow_bash: '^(npm (test|ci|run \\S+)\\b|npm (install|i)\\s*$|(pnpm|yarn) (test|run \\S+)\\b|(pnpm|yarn)( install)?\\s*$|node (--test\\b|(?!-)\\S+)|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',

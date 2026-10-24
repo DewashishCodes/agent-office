@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
-import { Button, ErrorText, ago, useAction } from '../ui.jsx'
+import { Ago, Button, ErrorText, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 
@@ -35,7 +35,7 @@ export default function Onboarding({ pid, project, floors }) {
       <ol className="messages">
         {data?.messages.map(m => (
           <li key={m.id} className={`msg ${m.role}`}>
-            <div className="meta">{WHO[m.role] || m.role} <span className="muted">{ago(m.created_at)}</span></div>
+            <div className="meta">{WHO[m.role] || m.role} <span className="muted"><Ago at={m.created_at} /></span></div>
             <div className="bubble"><Md text={m.text} /></div>
           </li>
         ))}

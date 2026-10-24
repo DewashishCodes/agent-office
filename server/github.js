@@ -91,8 +91,9 @@ export async function changedFiles(path, base_sha) {
   return out ? out.split('\n').map(f => f.trim().replaceAll('\\', '/')).filter(Boolean) : []
 }
 
-async function pushBranchNow(path, branch) {
-  await git(path, 'push', '-u', 'origin', branch)
+// force: after the agent rebased its branch to resolve conflicts; --force-with-lease never overwrites someone else's push.
+async function pushBranchNow(path, branch, { force = false } = {}) {
+  await git(path, 'push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch)
 }
 
 const numberFromUrl = url => Number(url.trim().split('/').pop())
@@ -174,6 +175,7 @@ export const pullDefault = serial(pullDefaultNow)
 export const createWorktree = serial(createWorktreeNow)
 export const removeWorktree = serial(removeWorktreeNow)
 export const pushBranch = serial(pushBranchNow)
+export const fetchOrigin = serial(path => git(path, 'fetch', 'origin'))
 
 // Owner folders: the crew never works in them. It reads what is there, and for a folder with no GitHub remote creates a
 // private repo from it; after that the crew works in its own clone like any GitHub project.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Ago, BackLink, Badge, Button, Empty, ErrorText, StatusDot, initials, taskStatus, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
 import Terminal from '../components/Terminal.jsx'
 import ModelEffort from '../components/ModelEffort.jsx'
@@ -30,7 +30,7 @@ export default function AgentProfile({ pid, id }) {
   const [run, busy, saveError] = useAction()
   const [runNote, noteBusy, noteError] = useAction()
 
-  if (error) return <section className="page"><a href="#/wall">Back to agents</a><ErrorText error={error} /></section>
+  if (error) return <section className="page"><BackLink /><ErrorText error={error} /></section>
   if (!a || !form) return <section className="page muted">Loading</section>
 
   const lastRun = a.runs?.[0]
@@ -67,7 +67,7 @@ export default function AgentProfile({ pid, id }) {
 
   return (
     <section className="page stack">
-      <a href="#/wall" className="back">Back to agents</a>
+      <BackLink />
       <header className="row">
         <span className="avatar big" aria-hidden="true">{initials(a.name)}</span>
         <div className="grow">
@@ -85,14 +85,14 @@ export default function AgentProfile({ pid, id }) {
         </div>
         <p className="small">{current ? <>On: {current.title}</> : <span className="muted">{a.status === 'paused' ? 'Paused' : 'No current task'}</span>}</p>
         <Terminal run={lastRun} />
-        {lastRun?.status === 'running' && <a className="small" href="#/wall">Pause, message or take over on the wall</a>}
+        {lastRun?.status === 'running' && <a className="small" href="#/home">Pause, message or take over from Home</a>}
       </section>
 
       <section className="card stack">
         <h2>Notes</h2>
         <p className="muted small">Notes are added to this agent's prompt on every task.</p>
         {a.notes?.length ? (
-          <ul className="feed">{a.notes.map(n => <li key={n.id}><span className="pre">{n.text}</span> <span className="muted small">{ago(n.created_at)}</span></li>)}</ul>
+          <ul className="feed">{a.notes.map(n => <li key={n.id}><span className="pre">{n.text}</span> <span className="muted small"><Ago at={n.created_at} /></span></li>)}</ul>
         ) : <Empty>No notes yet</Empty>}
         <form className="row" onSubmit={addNote}>
           <label className="field grow"><span>New note</span>

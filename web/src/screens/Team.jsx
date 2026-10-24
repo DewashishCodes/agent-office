@@ -21,7 +21,6 @@ export default function Team({ pid, floors, floor }) {
 
   return (
     <section className="page stack">
-      <a href="#/wall" className="back">Back to agents</a>
       <div className="row">
         <h1 className="grow">Team</h1>
         <Button variant="primary" onClick={() => setAdding(true)}>Add agent</Button>

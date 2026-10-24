@@ -1,9 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, useAction } from '../ui.jsx'
 import Working from '../components/Working.jsx'
 import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
+import RetryNote from '../components/RetryNote.jsx'
 
 export default function Inbox({ pid }) {
   const [history, setHistory] = useState(false)
@@ -66,7 +67,7 @@ export function Item({ i }) {
     <li className={`card inbox-item ${open ? '' : 'resolved'}`}>
       <div className="row wrap">
         <Badge status={i.kind}>{KIND[i.kind] || i.kind}</Badge>
-        <span className="muted small grow">{ago(i.created_at)}{!open && ', resolved'}</span>
+        <span className="muted small grow"><Ago at={i.created_at} />{!open && ', resolved'}</span>
         {i.link && <a className="small" href={i.link} target="_blank" rel="noreferrer">Open on GitHub</a>}
       </div>
       <h3>{i.title}</h3>
@@ -99,6 +100,7 @@ export function Item({ i }) {
           {i.task_id && i.order_id && (
             <ConfirmButton confirm="Merge every PR of this order, in order" disabled={busy || orderMerge?.busy} onConfirm={() => mergeOrder(i.order_id)}>Merge whole order</ConfirmButton>
           )}
+          {task?.conflict === 1 && <Button disabled={busy || orderMerge?.busy} onClick={() => { setMerging(''); act('resolve') }}>Resolve conflicts</Button>}
           <Button variant="ghost" disabled={busy || orderMerge?.busy} onClick={() => { setMerging(''); act('dismiss') }}>Dismiss</Button>
         </div>
       )}
@@ -111,6 +113,7 @@ export function Item({ i }) {
       {open && i.kind === 'failure' && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('retry')}>Retry</Button>
+          {i.task_id && <RetryNote onRetry={note => api(`/inbox/${i.id}/action`, { method: 'POST', body: { action: 'retry', text: note } })} />}
           <Button variant="ghost" disabled={busy} onClick={() => act('dismiss')}>Dismiss</Button>
         </div>
       )}

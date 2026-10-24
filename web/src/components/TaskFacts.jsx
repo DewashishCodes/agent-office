@@ -12,6 +12,8 @@ export default function TaskFacts({ t }) {
   return (
     <div className="row wrap small task-facts">
       {t.checks && <span className={`badge s-ci-${t.checks}`}>{CHECKS[t.checks] || t.checks}</span>}
+      {t.conflict === 1 && <span className="badge s-ci-fail">Conflicts</span>}
+      {t.conflict === 2 && <span className="badge s-ci-pending">Resolving conflicts</span>}
       <span className="muted">${cost.toFixed(2)}, {tokens(tok)} tok</span>
       {t.pr_number && <Button small variant="ghost" onClick={() => setDiff(true)}>View diff</Button>}
       {diff && <DiffSheet t={t} onClose={() => setDiff(false)} />}

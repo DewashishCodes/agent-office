@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
-import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
+import { runClaude, tokensToday, projectTokensToday, projectCostToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
+import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo, fetchOrigin } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -21,8 +21,11 @@ export const denyRules = project => [...TASK_DISALLOWED, ...project.settings.pro
 
 // acceptEdits asks for anything outside the policy; autonomous agents keep the old bypass behavior.
 export const agentMode = agent => (agent.permissions?.autonomous ? 'bypassPermissions' : 'acceptEdits')
-export const policyFor = (project, agent, cwd) => (tool, input) =>
-  permissionPolicy({ ...project.settings, read_roots: [vaultDir(project.id)] }, agent, tool, input, cwd)
+// extraBash widens the allow list for one run only, e.g. git rebase while resolving conflicts.
+export const policyFor = (project, agent, cwd, extraBash) => (tool, input) => permissionPolicy({
+  ...project.settings, read_roots: [vaultDir(project.id)],
+  auto_allow_bash: extraBash ? `${project.settings.auto_allow_bash}|${extraBash}` : project.settings.auto_allow_bash,
+}, agent, tool, input, cwd)
 export const MAX_ATTEMPTS = 2
 
 const pexec = promisify(execFile)
@@ -110,6 +113,7 @@ async function taskPrompt(t, a) {
     t.files.length && `## Files you are expected to touch\n\n${t.files.join('\n')}`,
     siblings.length && `## Other tasks of this order (not yours now, do not build them)\n\n${siblings.map(s => `- ${s.title}${s.files.length ? ` (${s.files.join(', ')})` : ''}`).join('\n')}`,
     deps.length && `## Already merged into your branch\n\n${deps.map(d => `- ${d.title} (${d.branch})${d.result ? `\n\n  What its agent reported:\n\n${d.result.slice(0, 2000).replace(/^/gm, '  > ')}` : ''}`).join('\n\n')}`,
+    !t.attempts && t.notes && `## Notes for this task\n\n${t.notes}`,
     t.attempts && t.notes && `## Previous attempt failed (attempt ${t.attempts + 1} now)\n\nYour earlier work is already on this branch. Fix these points:\n\n${t.notes}`,
   ].filter(Boolean).join('\n\n')
 }
@@ -127,6 +131,8 @@ function prBody(t) {
   ].filter(Boolean).join('\n\n')
 }
 
+const RESTARTED = 'The crew server restarted while you were working. Check git status and git log, then continue the task and end with a short summary.'
+
 async function runTask(task_id) {
   let t = getTask(task_id)
   const project = getProject(t.project_id)
@@ -140,18 +146,26 @@ async function runTask(task_id) {
   // Retries keep the first base so the gate and Reviewer see the whole branch.
   const base_sha = t.base_sha || await git(wt.path, 'rev-parse', 'HEAD')
   t = setTask(task_id, { branch, worktree: wt.path, base_sha })
+  const resolving = t.conflict === 2
+  if (resolving) await fetchOrigin(wt.path)
   log(project.id, 'dispatch', `${agent.name} started "${t.title}"${t.attempts ? ` (attempt ${t.attempts + 1})` : ''}`, { task_id, agent_id: agent.id, order_id: t.order_id })
   issueStatus(project, t, 'in_progress')
 
   const common = {
     project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path, systemPrompt: SYSTEM_TASK(agent, t, project),
     model: agent.model, effort: agent.effort, permissionMode: agentMode(agent), disallowedTools: denyRules(project),
-    permissionPolicy: policyFor(project, agent, wt.path), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
+    permissionPolicy: policyFor(project, agent, wt.path, resolving && '^git (rebase|merge-base|checkout --(ours|theirs))\\b'), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
   }
   // Feedback on a retry goes into the same session when the last one ended cleanly: it already knows the code it wrote.
   const prev = t.attempts && t.notes ? get(`SELECT session_id, status, agent_id FROM runs WHERE task_id = ? AND kind = 'task' ORDER BY id DESC`, task_id) : null
   let r = null
-  if (prev?.session_id && prev.status === 'ok' && prev.agent_id === agent.id) {
+  // A restart cut the last session off: the same agent picks it up, anyone else starts fresh.
+  const cut = t.resume_session
+  if (cut) t = setTask(task_id, { resume_session: null })
+  if (cut && get('SELECT agent_id FROM runs WHERE session_id = ? ORDER BY id DESC', cut)?.agent_id === agent.id) {
+    r = await runClaude({ ...common, resume: cut, prompt: RESTARTED })
+    if (!r.ok && !r.stopped && !getProject(project.id).paused) r = null
+  } else if (prev?.session_id && prev.status === 'ok' && prev.agent_id === agent.id) {
     r = await runClaude({ ...common, resume: prev.session_id, prompt: `Your work came back (attempt ${t.attempts + 1} now). Fix these points on the same branch, run the tests again, commit, and end with a short summary.\n\n${t.notes}` })
     if (!r.ok && !r.stopped && !getProject(project.id).paused) r = null
   }
@@ -162,26 +176,29 @@ async function runTask(task_id) {
   setTask(task_id, { result: r.text })
 
   await commitAll(wt.path, `${t.title} (crew task ${t.id})`)
-  const files = await changedFiles(wt.path, base_sha)
+  // After a rebase the old base is gone from the branch; the gate and review compare against where it now sits.
+  if (resolving) t = setTask(task_id, { base_sha: await git(wt.path, 'merge-base', 'HEAD', `origin/${project.default_branch}`) })
+  const files = await changedFiles(wt.path, t.base_sha)
   if (!files.length) return failTask(task_id, 'No files changed. Make the change and commit it.')
   const bad = files.filter(f => !isAllowed(f, agent.owned_paths, project.settings.protected_paths))
   if (bad.length) {
     log(project.id, 'gate', `Gate rejected "${t.title}": ${bad.join(', ')}`, { task_id, agent_id: agent.id })
-    return failTask(task_id, `These files are outside your owned paths or inside protected paths. Revert every change to them (git checkout ${base_sha} -- <file>, or git rm for new files) and commit:\n${bad.map(f => `- ${f}`).join('\n')}`)
+    return failTask(task_id, `These files are outside your owned paths or inside protected paths. Revert every change to them (git checkout ${t.base_sha} -- <file>, or git rm for new files) and commit:\n${bad.map(f => `- ${f}`).join('\n')}`)
   }
 
   // Canceled while the run was wrapping up: no PR, no review.
   if (getTask(task_id).status === 'canceled') return
   if (getOrder(t.order_id)?.hotfix) {
     // Never forced: a protected branch or one that moved mid-push fails the task to the Inbox instead.
-    t = setTask(task_id, { base_sha: await rebaseOnto(wt.path, base_sha, branch, project.default_branch) })
+    t = setTask(task_id, { base_sha: await rebaseOnto(wt.path, t.base_sha, branch, project.default_branch) })
     await pushTo(wt.path, `${branch}:refs/heads/${project.default_branch}`)
     t = setTask(task_id, { status: 'done' })
     issueStatus(project, t, 'done')
     log(project.id, 'hotfix', `${agent.name} pushed hotfix "${t.title}" straight to ${project.default_branch}`, { task_id, agent_id: agent.id, order_id: t.order_id })
     return markMerged(task_id)
   }
-  await pushBranch(wt.path, branch)
+  await pushBranch(wt.path, branch, { force: resolving })
+  if (resolving) t = setTask(task_id, { conflict: 0 })
   if (!t.pr_number) {
     const pr = await createPR(project, { branch, title: t.title, body: prBody(t) })
     t = setTask(task_id, { pr_number: pr.number, pr_url: pr.url })
@@ -210,6 +227,14 @@ function tickProject(p) {
     if (oncePerDay(`budget:p${p.id}`)) {
       log(p.id, 'budget', 'Project daily token budget reached; no new tasks start until tomorrow.')
       addInbox(p.id, 'question', 'Project daily token budget reached', { body: 'Raise project_daily_token_budget in settings or wait until tomorrow.' })
+    }
+    return
+  }
+  const dollars = p.settings.project_daily_cost_budget
+  if (dollars != null && projectCostToday(p.id) >= dollars) {
+    if (oncePerDay(`cost:p${p.id}`)) {
+      log(p.id, 'budget', `Project daily cost budget ($${dollars}) reached; no new tasks start until tomorrow.`)
+      addInbox(p.id, 'question', 'Project daily cost budget reached', { body: 'Raise the daily cost budget in Settings or wait until tomorrow.' })
     }
     return
   }
@@ -312,7 +337,12 @@ export async function mergeTask(task_id) {
   if (t.depends_on.length) {
     const open = t.depends_on.map(getTask).filter(d => d && !d.merged && d.status !== 'canceled')
     if (open.length) throw new Error(`Merge ${open.map(d => `#${d.pr_number || d.id} "${d.title}"`).join(', ')} first: this PR builds on it.`)
-    if (t.worktree && t.base_sha) t = setTask(t.id, { base_sha: await restack(t.worktree, t.base_sha, t.branch, project.default_branch) })
+    if (t.worktree && t.base_sha) {
+      try { t = setTask(t.id, { base_sha: await restack(t.worktree, t.base_sha, t.branch, project.default_branch) }) } catch (e) {
+        setTask(t.id, { conflict: 1 })
+        throw e
+      }
+    }
   }
   for (let i = 0; ; i++) {
     try { await mergePR(project, t.pr_number); break } catch (e) {
@@ -322,6 +352,21 @@ export async function mergeTask(task_id) {
   }
   markMerged(t.id)
   return getTask(t.id)
+}
+
+// "Resolve conflicts": the author takes the task back on the same branch to rebase it onto the project branch. Not an
+// attempt. Its order goes back to in progress so integration (and the merge cards) run again once it passes review.
+export function resolveConflicts(task_id) {
+  const t = getTask(task_id)
+  if (t.merged || t.status !== 'done' || !t.pr_number) throw new Error('Only a finished task with an open PR can be sent back to resolve conflicts')
+  const project = getProject(t.project_id)
+  for (const i of all(`SELECT id FROM inbox WHERE order_id = ? AND kind = 'merge' AND status = 'open'`, t.order_id)) resolveInbox(i.id)
+  if (getOrder(t.order_id).status === 'ready_to_merge') setOrder(t.order_id, { status: 'in_progress' })
+  const notes = `Your PR conflicts with ${project.default_branch}. Run git rebase origin/${project.default_branch} (the server already fetched), resolve every conflict, git add the files, continue with GIT_EDITOR=true git rebase --continue, run the tests, and make sure everything is committed. Do not push; the server pushes.`
+  log(t.project_id, 'task', `Sent "${t.title}" back to resolve conflicts with ${project.default_branch}`, { task_id: t.id, order_id: t.order_id })
+  const out = setTask(t.id, { status: 'planned', conflict: 2, notes })
+  kick()
+  return out
 }
 
 // A finished or dropped task's worktree is dead weight under data/worktrees. Canceled runs get a moment to exit first:
@@ -335,7 +380,7 @@ function dropWorktree(t, delay = 0) {
 export function markMerged(task_id) {
   const t = getTask(task_id)
   if (t.merged) return
-  setTask(t.id, { merged: 1 })
+  setTask(t.id, { merged: 1, merged_at: now() })
   dropWorktree(t)
   if (t.pr_number) log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
@@ -435,6 +480,11 @@ export function resumeChecks(project_id = null) {
 
 // Boot: no child survives a restart, so running rows are stale. A restart is never the task's fault, so no attempt is counted.
 export function recover() {
+  // The agent's context survives in its session; picking it up again is cheaper than starting from the prompt.
+  for (const t of all(`SELECT id, agent_id FROM tasks WHERE status = 'in_progress'`)) {
+    const r = get(`SELECT session_id FROM runs WHERE task_id = ? AND kind = 'task' AND agent_id = ? AND session_id IS NOT NULL ORDER BY id DESC`, t.id, t.agent_id)
+    if (r) update('tasks', t.id, { resume_session: r.session_id })
+  }
   run(`UPDATE runs SET status = 'error', pending_permission = NULL, ended_at = ? WHERE status = 'running'`, now())
   run(`UPDATE inbox SET status = 'done', resolved_at = ? WHERE kind = 'permission' AND status = 'open'`, now())
   for (const a of all(`SELECT id FROM agents WHERE status = 'working'`)) setAgent(a.id, { status: 'idle' })
