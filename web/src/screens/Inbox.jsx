@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api, on, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
 import Working from '../components/Working.jsx'
+import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 
 export default function Inbox({ pid }) {
   const [all, setAll] = useState(false)
@@ -44,6 +45,8 @@ export function Item({ i }) {
   const [run, busy, error] = useAction()
   const act = (action, extra) => run(() => api(`/inbox/${i.id}/action`, { method: 'POST', body: { action, ...extra } }))
   const open = i.status === 'open'
+  const [task] = useTask(open && i.kind === 'merge' ? i.task_id : null, i.project_id)
+  const red = task?.checks === 'fail'
 
   return (
     <li className={`card inbox-item ${open ? '' : 'resolved'}`}>
@@ -75,9 +78,10 @@ export function Item({ i }) {
           </div>
         </form>
       )}
+      {open && task && <TaskFacts t={task} />}
       {open && i.kind === 'merge' && (
         <div className="actions">
-          <ConfirmButton variant="primary" confirm="Squash and merge" disabled={busy || orderMerge?.busy} onConfirm={() => { setMerging('Merging. A PR that builds on others is rebased first, so this can take a minute.'); act('merge') }}>Merge</ConfirmButton>
+          <ConfirmButton variant="primary" confirm={red ? 'CI is failing. Merge anyway' : 'Squash and merge'} disabled={busy || orderMerge?.busy} onConfirm={() => { setMerging('Merging. A PR that builds on others is rebased first, so this can take a minute.'); act('merge') }}>Merge</ConfirmButton>
           {i.task_id && i.order_id && (
             <ConfirmButton confirm="Merge every PR of this order, in order" disabled={busy || orderMerge?.busy} onConfirm={() => mergeOrder(i.order_id)}>Merge whole order</ConfirmButton>
           )}
