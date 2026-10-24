@@ -128,6 +128,21 @@ npm run build && npm start
 
 The first start makes an owner token, saves it in `.env` and prints it. Open **http://localhost:5190**, log in with it, and add a project. All state lives in `data/`; delete it to start over.
 
+## Keep it running
+
+Agents run on your computer, so it has to stay on and awake while they work.
+
+| | |
+|---|---|
+| **Windows** | Run it as a service with [nssm](https://nssm.cc): `nssm install AgentOffice "C:\Program Files
+odejs
+ode.exe" "--env-file-if-exists=.env" "server\index.js"`, set the app directory to this folder, then `nssm start AgentOffice`. |
+| **macOS** | A launchd agent in `~/Library/LaunchAgents` with `KeepAlive` and `WorkingDirectory` set to this folder, running `node --env-file-if-exists=.env server/index.js`. Load it with `launchctl load`. |
+| **Linux** | A systemd user unit with `WorkingDirectory` set to this folder, `ExecStart=node --env-file-if-exists=.env server/index.js` and `Restart=on-failure`, then `systemctl --user enable --now`. |
+| **Sleep** | Turn off sleep while plugged in, or use `caffeinate -s` (macOS) or PowerToys Awake (Windows). The app shows a one-line notice after the server comes back from a crash, power loss or sleep; interrupted tasks go back in the queue. |
+
+The service must run as your user so it sees your `git`, `claude` and `gh` logins.
+
 ## Phone access
 
 Use [Tailscale Serve](https://tailscale.com/kb/1312/serve) for HTTPS inside your private tailnet:
