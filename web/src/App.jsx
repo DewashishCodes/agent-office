@@ -18,10 +18,11 @@ const ICONS = {
   command: 'M4 5h16v11H9l-5 4z',
   wall: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6',
   board: 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z',
+  inbox: 'M4 13l2.5-8h11l2.5 8v6H4zM4 13h5l1 2h4l1-2h5',
 }
-const TABS = [['home', 'Home'], ['command', 'Command'], ['wall', 'Agents'], ['board', 'Board']]
+const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['wall', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { inbox: 'home', vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
+const TAB_OF = { vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -104,7 +105,7 @@ function Shell() {
             <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} title={name} aria-current={tab === id ? 'page' : undefined}>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={ICONS[id]} /></svg>
               <span className="tab-name">{name}</span>
-              {id === 'home' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
+              {id === 'inbox' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
             </a>
           ))}
         </nav>
