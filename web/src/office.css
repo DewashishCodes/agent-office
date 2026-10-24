@@ -311,3 +311,4 @@
 @media (max-width: 899px) {
   .hq.has-needs .room { height: 40vh; min-height: 240px; }
 }
+.order-line > .plan { grid-column: 1 / -1; margin-top: 6px; }
