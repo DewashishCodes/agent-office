@@ -105,6 +105,19 @@ export function ago(s) {
   return `${Math.floor(sec / 86400)}d ago`
 }
 
+const at = s => new Date(s.replace(' ', 'T') + 'Z')
+
+// A relative time that shows the full local timestamp on hover.
+export const Ago = ({ at: s }) => s ? <time dateTime={at(s).toISOString()} title={at(s).toLocaleString()}>{ago(s)}</time> : null
+
+// Running time since a server timestamp, ticking every second.
+export function Elapsed({ since }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  const s = Math.max(0, Math.round((now - (since ? at(since).getTime() : now)) / 1000))
+  return <span className="elapsed">{s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`}</span>
+}
+
 export function tokens(n) {
   n = Number(n) || 0
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
