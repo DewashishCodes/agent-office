@@ -149,7 +149,7 @@ Tests (owner: Brain agent) in `test/*.test.js`: parseReply, matchAgent, readyTas
 ### server/index.js
 Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
 
-Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and sets cookie `crew=<sha256 of token>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires the cookie. `GET /api/me -> {ok:true}`. `POST /api/logout`.
+Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and sets cookie `crew=<sha256 of token>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires the cookie. `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout`.
 
 Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: "message" }` with 4xx/5xx. Long work (chat, onboarding, plan actions that run Claude) returns `202 {ok:true}` immediately and reports progress through SSE.
 
