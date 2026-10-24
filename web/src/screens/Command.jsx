@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, orderStatus, taskStatus, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
@@ -158,6 +158,9 @@ export function PlanCard({ orderId, pid, agents }) {
   const byKey = Object.fromEntries(tasks.map(t => [t.plan_key, t]))
   const open = order.status === 'awaiting_approval'
   const done = tasks.filter(t => t.status === 'done').length
+  const est = order.estimates, guessOf = t => est?.[t.size] || est?.M
+  const total = est && (plan.tasks || []).reduce((s, t) => ({ cost: s.cost + guessOf(t).cost, tokens: s.tokens + guessOf(t).tokens }), { cost: 0, tokens: 0 })
+  const history = est && Object.values(est).some(e => e.n)
 
   const act = (path, body) => run(async () => {
     await api(`/orders/${orderId}/${path}`, { method: 'POST', body })
@@ -175,7 +178,10 @@ export function PlanCard({ orderId, pid, agents }) {
         <Badge status={orderStatus(order)} />
       </header>
       {tasks.length > 0 && (
-        <p className="muted small">{done} of {tasks.length} tasks done. <a href={`#/board/${orderId}`}>Open on board</a></p>
+        <p className="muted small">{done} of {tasks.length} tasks done, ${Number(order.cost_usd || 0).toFixed(2)} so far. <a href={`#/board/${orderId}`}>Open on board</a></p>
+      )}
+      {open && total && (
+        <p className="small">About ${total.cost.toFixed(2)} and {tokens(total.tokens)} tokens <span className="muted">({history ? 'from this project\'s finished tasks' : 'a rough guess until tasks finish here'})</span></p>
       )}
       {open && plan.tasks?.length > 1 && <p className="muted small">{shape(plan.tasks)}</p>}
       <ol className="plan-tasks">
@@ -204,6 +210,7 @@ export function PlanCard({ orderId, pid, agents }) {
                 <span className="grow">{t.title}</span>
                 <span className="pill">{t.agent || t.role}</span>
                 <span className="pill">{t.size}</span>
+                {open && est && <span className="muted small" title={`${tokens(guessOf(t).tokens)} tokens`}>~${guessOf(t).cost.toFixed(2)}</span>}
                 {byKey[t.key] && <Badge status={taskStatus(byKey[t.key])} />}
               </summary>
               <div className="plan-detail">
