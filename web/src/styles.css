@@ -149,7 +149,7 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
   background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
-.project-pick { width: auto; max-width: 46vw; font-weight: 600; border-color: transparent; background: transparent; padding-left: 4px; }
+.project-pick { width: auto; max-width: min(46vw, 280px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-weight: 600; border-color: transparent; background: transparent; padding-left: 4px; }
 .stats { flex: 1; display: flex; gap: 10px; justify-content: flex-end; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .stats { align-items: center; }
 .cost { font-weight: 650; color: var(--text); }
