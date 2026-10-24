@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, Empty, ErrorText, StatusDot, ago, initials, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, Empty, ErrorText, StatusDot, initials, taskStatus, tokens, useAction } from '../ui.jsx'
 import { RunItem } from './Board.jsx'
 import Terminal from '../components/Terminal.jsx'
 import ModelEffort from '../components/ModelEffort.jsx'
@@ -92,7 +92,7 @@ export default function AgentProfile({ pid, id }) {
         <h2>Notes</h2>
         <p className="muted small">Notes are added to this agent's prompt on every task.</p>
         {a.notes?.length ? (
-          <ul className="feed">{a.notes.map(n => <li key={n.id}><span className="pre">{n.text}</span> <span className="muted small">{ago(n.created_at)}</span></li>)}</ul>
+          <ul className="feed">{a.notes.map(n => <li key={n.id}><span className="pre">{n.text}</span> <span className="muted small"><Ago at={n.created_at} /></span></li>)}</ul>
         ) : <Empty>No notes yet</Empty>}
         <form className="row" onSubmit={addNote}>
           <label className="field grow"><span>New note</span>
