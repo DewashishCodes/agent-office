@@ -423,3 +423,6 @@ h1 .count { vertical-align: middle; }
 .badge.g-stuck { background: var(--err-soft); color: var(--err); }
 .badge.g-canceled { background: var(--surface-2); color: var(--muted); }
 .badge[class*=" g-"] { text-transform: none; }
+.term-switch { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.term-flip { position: absolute; top: 4px; right: 4px; z-index: 2; }
+.term-flip[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
