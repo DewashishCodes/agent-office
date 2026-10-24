@@ -91,7 +91,7 @@ export default function Board({ pid, project, orderId }) {
             {list.map(card)}
           </section>
         ))}
-        {tasks && !COLS.some(([, , f]) => shown.some(f)) && <Empty>Nothing in flight.</Empty>}
+        {tasks && !COLS.some(([, , f]) => shown.some(f)) && <Empty>{blocked.length ? 'Nothing else in flight.' : 'Nothing in flight.'}</Empty>}
       </div>
       {openId && <TaskSheet id={openId} pid={pid} repo={project.repo} onClose={() => setOpenId(null)} />}
     </section>
