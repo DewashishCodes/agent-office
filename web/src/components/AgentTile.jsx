@@ -1,76 +1,16 @@
 import { useState } from 'react'
-import { api, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, orderStatus, tokens, useAction } from '../ui.jsx'
-import Terminal from '../components/Terminal.jsx'
-import { CrewThread } from '../components/Office.jsx'
-import '../office.css'
-import QuickTask from '../components/QuickTask.jsx'
-import PermissionCard from '../components/Permission.jsx'
-import '../wall.css'
+import { api } from '../api.js'
+import { Badge, Button, ConfirmButton, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
+import Terminal from './Terminal.jsx'
+import PermissionCard from './Permission.jsx'
+import '../agent.css'
 
-const WALL_EVENTS = ['agent', 'order', 'task', 'run', 'crew_message']
 const HAND_BACK = 'The owner worked on this in a terminal and handed it back. Check git status and git log, then continue the task.'
-
-export default function Wall({ pid }) {
-  const [wall, , error] = useData(`/projects/${pid}/wall`, ev => ev.project_id === pid && WALL_EVENTS.includes(ev.type))
-  const [open, setOpen] = useState(null)
-  const [quick, setQuick] = useState(null)
-  if (error) return <section className="page"><ErrorText error={error} /></section>
-  if (!wall) return <section className="page muted">Loading</section>
-  const shown = open ? wall.agents.filter(a => a.id === open) : wall.agents
-
-  return (
-    <section className="wall">
-      <div className="row wall-head">
-        <h1 className="grow">Agents</h1>
-        <a className="btn small" href="#/team">Manage team</a>
-      </div>
-      <div className="tiles">
-        {shown.map(a => (
-          <Tile key={a.id} a={a} expanded={open === a.id} onExpand={() => setOpen(open === a.id ? null : a.id)} onQuick={() => setQuick(a.name)} />
-        ))}
-        {!wall.agents.length && <Empty>No agents yet.</Empty>}
-      </div>
-      <aside className="rail" aria-label="Crew status">
-        {wall.permissions.length > 0 && (
-          <section className="card stack waiting">
-            <h2>Waiting for you</h2>
-            {wall.permissions.flatMap(p => (p.pending_permission || []).map(req => (
-              <Permission key={req.request_id} runId={p.run_id} req={req} who={p.agent_name} />
-            )))}
-          </section>
-        )}
-        <section className="card stack">
-          <h2>Orders</h2>
-          {wall.orders.length ? (
-            <ul className="feed">
-              {wall.orders.map(o => {
-                const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
-                return (
-                  <li key={o.id} className="row wrap">
-                    <a className="grow" href={`#/board/${o.id}`}>#{o.id} {o.plan?.summary || o.text}</a>
-                    <Badge status={orderStatus(o)} />
-                    {total > 0 && <span className="muted small">{o.counts.done || 0}/{total} done</span>}
-                  </li>
-                )
-              })}
-            </ul>
-          ) : <Empty>No open orders</Empty>}
-        </section>
-        <section className="card stack">
-          <h2>Crew messages</h2>
-          <CrewThread crew={wall.crew} />
-        </section>
-      </aside>
-      {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
-    </section>
-  )
-}
 
 export const stateOf = r => (r?.status === 'running' ? r.state : 'idle')
 
-// Also Home's terminal pane: there it is always expanded and has no Open button (onExpand omitted).
-export function Tile({ a, expanded, onExpand, onQuick }) {
+// One agent's live run: Home's terminal pane, with pause, stop, message, take over and its permission requests.
+export function Tile({ a, expanded, onQuick }) {
   const r = a.run
   const state = stateOf(r)
   const liveRun = r?.status === 'running'
@@ -115,7 +55,6 @@ export function Tile({ a, expanded, onExpand, onQuick }) {
         {liveRun && <ConfirmButton small variant="danger" confirm={r.task_id ? 'Stop this task' : 'Stop this run'} disabled={busy} onConfirm={() => post('kill')}>Stop</ConfirmButton>}
         {liveRun && state === 'paused' && <Button small variant="primary" disabled={busy} onClick={() => post('resume')}>Resume</Button>}
         {liveRun && state === 'handed_off' && <Button small variant="primary" disabled={busy} onClick={() => post('resume', { text: HAND_BACK })}>Hand back</Button>}
-        {onExpand && <Button small variant="ghost" onClick={onExpand} aria-expanded={expanded}>{expanded ? 'Back to wall' : 'Open'}</Button>}
         {((liveRun && r.session_id && state !== 'handed_off') || a.owned_paths?.length > 0) && (
           <More>
             {liveRun && r.session_id && state !== 'handed_off' && <Button variant="ghost" disabled={busy} onClick={takeOver}>Take over the keyboard</Button>}

@@ -1,21 +1,4 @@
-/* Wall: live agent tiles, a rail for orders, permissions and crew messages. */
-.wall { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; }
-.tiles { display: grid; gap: 12px; grid-template-columns: 1fr; align-content: start; }
-.rail { display: flex; flex-direction: column; gap: 12px; }
-.wall-head { order: -2; }
-/* Phone: the rail dissolves so permissions jump above the tiles, orders and crew messages fall below. Tiles stay compact until opened. */
-@media (max-width: 899px) {
-  .rail { display: contents; }
-  .rail .waiting { order: -1; }
-  .tile:not(.expanded) .transcript, .tile:not(.expanded) .terminal, .tile:not(.expanded) .tell { display: none; }
-}
-@media (min-width: 900px) {
-  .wall { display: grid; grid-template-columns: 1fr 320px; align-items: start; }
-  .wall-head { grid-column: 1 / -1; }
-  .tiles { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
-  .rail { position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow: auto; }
-}
-
+/* Agent tiles (Home's terminal pane), transcripts, the real terminal and code blocks. */
 .tile { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .tile.expanded { grid-column: 1 / -1; }
 .tile-head { display: flex; gap: 10px; align-items: center; }
