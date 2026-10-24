@@ -3,6 +3,7 @@ import { api, on, useData, useEvents } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, useAction } from '../ui.jsx'
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from './Wall.jsx'
+import { PlanCard } from './Command.jsx'
 import Office, { CrewThread, light } from '../components/Office.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
@@ -171,7 +172,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       </section>
 
       <section className="hq-orders" aria-label="Orders">
-        <Orders pid={pid} floor={floor} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
+        <Orders pid={pid} floor={floor} agents={agents} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
           support={agents.find(a => a.role === 'support')} services={services} onServices={() => setSheet('services')} />
       </section>
 
@@ -243,7 +244,7 @@ function Kanban({ tasks, orders }) {
 }
 
 // The order section has two modes: orders for the build team, and Support for chores (no plan, no PR).
-function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, onServices }) {
+function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices }) {
   const [mode, setMode] = useState(() => { try { return localStorage.getItem('crew.bar') === 'support' ? 'support' : 'order' } catch { return 'order' } })
   const pickMode = m => { setMode(m); setSent(false); try { localStorage.setItem('crew.bar', m) } catch {} }
   const [text, setText] = useState('')
@@ -259,7 +260,6 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
       setText('')
     })
   }
-  const approve = id => run(() => api(`/orders/${id}/approve`, { method: 'POST', body: {} }))
   const cancel = id => run(() => api(`/orders/${id}/cancel`, { method: 'POST' }))
   return (
     <>
@@ -284,18 +284,14 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
             return (
               <li key={o.id} className="order-line">
                 <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
-                {o.status === 'awaiting_approval' ? (
-                  <span className="row">
-                    <a className="small" href="#/command">Plan</a>
-                    <Button small variant="primary" disabled={busy} onClick={() => approve(o.id)}>Approve</Button>
-                  </span>
-                ) : total > 0
+                {o.status === 'awaiting_approval' ? <Badge status="plan">Plan ready</Badge> : total > 0
                   ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
                   : <Badge status={o.status} />}
                 <More label={`Actions for ${o.plan?.summary || o.text}`}>
                   <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
                   <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
                 </More>
+                {o.status === 'awaiting_approval' && <PlanCard orderId={o.id} pid={pid} agents={agents} />}
               </li>
             )
           }) : <li className="lane-empty">No open orders</li>}
@@ -307,7 +303,7 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
           placeholder={mode === 'support' ? 'Ask Support: start the server, run the tests, query the db...' : `Give the ${floor.name} floor an order...`} />
         <Button type="submit" variant="primary" disabled={busy || !text.trim()}>{mode === 'support' ? 'Ask' : 'Send'}</Button>
       </form>
-      {sent && mode === 'order' && <p className="small muted">Sent. The plan comes back on <a href="#/command">Command</a>.</p>}
+      {sent && mode === 'order' && <p className="small muted">Sent. The plan shows up here when the lead has it, and on <a href="#/command">Command</a>.</p>}
       <ErrorText error={error} />
     </>
   )
