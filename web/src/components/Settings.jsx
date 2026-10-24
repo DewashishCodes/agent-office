@@ -10,6 +10,7 @@ export default function Settings({ project, onClose, reload }) {
   const [f, setF] = useState({
     name: project.name,
     budget: String(s.project_daily_token_budget ?? ''),
+    cost: s.project_daily_cost_budget == null ? '' : String(s.project_daily_cost_budget),
     perm: String(s.permission_timeout_min ?? 15),
     question: String(s.question_timeout_min ?? 30),
     digest: s.digest_hour == null ? '' : String(s.digest_hour),
@@ -28,7 +29,7 @@ export default function Settings({ project, onClose, reload }) {
         body: {
           name: f.name.trim(),
           settings: {
-            project_daily_token_budget: Number(f.budget), permission_timeout_min: Number(f.perm), question_timeout_min: Number(f.question),
+            project_daily_token_budget: Number(f.budget), project_daily_cost_budget: f.cost === '' ? null : Number(f.cost), permission_timeout_min: Number(f.perm), question_timeout_min: Number(f.question),
             digest_hour: f.digest === '' ? null : Number(f.digest), plan_approval_small: f.approveSmall,
             protected_paths: lines(f.protectedPaths), auto_allow_bash: f.bash,
           },
@@ -46,6 +47,7 @@ export default function Settings({ project, onClose, reload }) {
         <label className="field"><span>Name</span><input value={f.name} onChange={set('name')} required /></label>
         <div className="grid2">
           <label className="field"><span>Daily token budget for the project</span><input type="number" min="0" step="1000000" value={f.budget} onChange={set('budget')} required /></label>
+          <label className="field"><span>Daily cost budget in dollars (empty = no limit)</span><input type="number" min="0" step="0.5" value={f.cost} onChange={set('cost')} /></label>
           <label className="field"><span>Morning digest hour (0 to 23, empty = off)</span><input type="number" min="0" max="23" value={f.digest} onChange={set('digest')} /></label>
           <label className="field"><span>Deny unanswered permission prompts after (minutes)</span><input type="number" min="1" value={f.perm} onChange={set('perm')} required /></label>
           <label className="field"><span>Agents stop waiting for your answer after (minutes)</span><input type="number" min="1" value={f.question} onChange={set('question')} required /></label>
