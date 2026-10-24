@@ -414,3 +414,11 @@ h1 .count { vertical-align: middle; }
 .diff .d-meta { color: var(--muted); }
 .permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .permission details pre { max-height: 240px; overflow: auto; }
+.badge.g-wait { background: var(--accent-soft); color: var(--accent); }
+.badge.g-work { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.badge.g-check { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.badge.g-merge { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.badge.g-shipped { background: var(--ok); color: var(--surface); }
+.badge.g-stuck { background: var(--err-soft); color: var(--err); }
+.badge.g-canceled { background: var(--surface-2); color: var(--muted); }
+.badge[class*=" g-"] { text-transform: none; }
