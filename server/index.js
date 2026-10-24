@@ -68,6 +68,7 @@ const SETTINGS = {
   plan_approval_small: v => typeof v === 'boolean',
   digest_hour: v => v === null || count(0, 23)(v),
   project_daily_token_budget: count(0),
+  project_daily_cost_budget: v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0),
   permission_timeout_min: count(1, 24 * 60),
   question_timeout_min: count(1, 24 * 60),
   auto_allow_bash: regex,
