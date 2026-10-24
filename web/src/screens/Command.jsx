@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
@@ -95,7 +95,7 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
       <ol className="messages">
         {messages?.map(m => (
           <li key={m.id} className={`msg ${m.role}`}>
-            <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : leadName} <span className="muted">{ago(m.created_at)}</span></div>
+            <div className="meta">{m.role === 'user' ? 'You' : m.role === 'system' ? 'Crew' : leadName} <span className="muted"><Ago at={m.created_at} /></span></div>
             {m.text && <div className="bubble"><Md text={m.text} /></div>}
             {m.order_id && <PlanCard orderId={m.order_id} pid={pid} agents={agents?.filter(a => a.floor === floor.key)} />}
           </li>
@@ -134,7 +134,7 @@ function ChatList({ chats, current, onPick }) {
             <li key={c.id}>
               <button type="button" aria-current={c.id === current || undefined} onClick={() => onPick(c.id)}>
                 <span className="clip">{c.title}</span>
-                <span className="muted small">{ago(c.updated_at)}</span>
+                <span className="muted small"><Ago at={c.updated_at} /></span>
               </button>
             </li>
           ))}
