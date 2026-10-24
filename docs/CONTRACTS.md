@@ -83,6 +83,7 @@ createPR(project, { branch, title, body }) -> { number, url }
 prComment(project, number, body)
 mergePR(project, number)                           // gh pr merge --squash --delete-branch
 prState(project, number) -> { state: 'OPEN'|'MERGED'|'CLOSED', checks: 'pass'|'fail'|'pending'|'none' }
+prStates(project) -> Map(number -> { state, checks })   // latest 100 PRs in one gh call
 prDiff(project, number) -> string                  // gh pr diff, truncated to 200k chars
 ```
 
@@ -133,7 +134,7 @@ Tick per project that is not paused: for each ready task, pick/confirm agent (re
 4. `commitAll`, `changedFiles(base_sha)`. Nothing changed -> failure. Any file not allowed (outside owned or inside protected) -> failure with the file list in notes.
 5. `pushBranch`, `createPR` (body: summary, acceptance checklist, `Closes #<issue>`, dependency PRs to merge first), task `in_review`, `setIssueStatus`, log with PR link, then `pipeline.checkTask(task_id)`.
 Failure = `attempts + 1`, notes set, back to `planned`; when attempts reach 2 -> `blocked` + inbox `failure`. A crashed session (ok false) counts as one attempt (retry once, then escalate).
-PR poll: tasks with pr_number and merged = 0 -> `prState`; MERGED -> `merged = 1`, log; order `done` when all its tasks merged. Also onboarding PR merged -> project onboarding_status 'done'.
+PR poll: tasks with pr_number and merged = 0 -> one `prStates` per project (`prState` for PRs older than the list); store `tasks.checks`; MERGED -> `merged = 1`, worktree removed, log; order `done` when all its tasks merged. Also onboarding PR merged -> project onboarding_status 'done'.
 
 ### server/pipeline.js
 ```js
@@ -254,7 +255,7 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 ### Schema
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
-- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`. `inbox`: `run_id`, `ref`.
+- `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`. `inbox`: `run_id`, `ref`.
 - Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex).
 
 ### Routes

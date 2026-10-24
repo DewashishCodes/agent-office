@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
 import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
+import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -396,14 +396,23 @@ export function markOnboarded(project_id) {
 }
 
 let polling = false
-async function poll() {
+// One gh call per project however many PRs are open; list and one are swappable for tests.
+export async function poll({ list = prStates, one = prState } = {}) {
   if (polling) return
   polling = true
   try {
-    for (const t of all('SELECT * FROM tasks WHERE pr_number IS NOT NULL AND merged = 0')) {
-      try {
-        if ((await prState(getProject(t.project_id), t.pr_number)).state === 'MERGED') markMerged(t.id)
-      } catch (e) { console.error('pr poll', t.id, e.message) }
+    const open = all('SELECT * FROM tasks WHERE pr_number IS NOT NULL AND merged = 0')
+    for (const project_id of new Set(open.map(t => t.project_id))) {
+      const p = getProject(project_id)
+      let prs
+      try { prs = await list(p) } catch (e) { console.error('pr poll', p.id, e.message); continue }
+      for (const t of open.filter(t => t.project_id === project_id)) {
+        try {
+          const pr = prs.get(t.pr_number) || await one(p, t.pr_number)
+          if (pr.checks !== t.checks) setTask(t.id, { checks: pr.checks })
+          if (pr.state === 'MERGED') markMerged(t.id)
+        } catch (e) { console.error('pr poll', t.id, e.message) }
+      }
     }
     for (const p of all(`SELECT * FROM projects WHERE onboarding_status = 'pr_open' AND onboarding_pr IS NOT NULL`)) {
       try {
