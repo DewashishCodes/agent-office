@@ -8,7 +8,7 @@ import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
 import { killProject, killRun, tokensToday, projectTokensToday, projectCostToday, sendToRun, interruptRun, resumeRun, handoffRun, answerPermission, getRunEvents,
   hookEvent, watchPty, ptyInput, ptyResize, ptyLogPath } from './runner.js'
-import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder, ensureClone, pullDefault, listBranches } from './github.js'
+import { repoInfo, mergePR, inspectFolder, initRepo, createRepoFromFolder, ensureClone, pullDefault, listBranches, prDiff } from './github.js'
 import { startInterview, askOnboarding, applyProposal } from './onboarding.js'
 import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './orchestrator.js'
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
@@ -390,6 +390,12 @@ app.get('/api/tasks/:id', (req, res) => {
     activity: all('SELECT * FROM activity WHERE task_id = ? ORDER BY id DESC', t.id),
     runs: all('SELECT * FROM runs WHERE task_id = ? ORDER BY id DESC', t.id),
   })
+})
+
+app.get('/api/tasks/:id/diff', async (req, res) => {
+  const t = found(getTask(int(req.params.id)), 'task')
+  if (!t.pr_number) throw fail(404, 'This task has no pull request yet')
+  try { res.json({ diff: await prDiff(getProject(t.project_id), t.pr_number) }) } catch (e) { throw fail(502, e.message) }
 })
 
 app.post('/api/tasks/:id/cancel', (req, res) => {

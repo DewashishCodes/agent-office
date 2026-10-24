@@ -175,6 +175,7 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | POST | /api/orders/:id/reject | `rejectPlan` |
 | GET | /api/projects/:id/tasks?agent_id=&order_id= | tasks with `agent_name` |
 | GET | /api/tasks/:id | task + `activity` + `runs` |
+| GET | /api/tasks/:id/diff | `{ diff }` from `prDiff` (404 without a PR, 502 when gh fails) |
 | POST | /api/tasks/:id/retry | attempts 0, notes '', status planned, kick |
 | GET | /api/templates | `TEMPLATES` |
 | GET | /api/projects/:id/agents | active agents, each with `tokens_today`, `current_task` (title of its in_progress task or null), `last_event` of its running run |
