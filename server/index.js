@@ -395,6 +395,16 @@ app.post('/api/orders/:id/reject', async (req, res) => {
 
 // Tasks
 
+// What the office delivered: merged tasks newest first, each with its agent, order and total run cost.
+app.get('/api/projects/:id/shipped', (req, res) => {
+  res.json(all(`SELECT t.id, t.title, t.pr_number, t.pr_url, t.order_id, COALESCE(t.merged_at, t.updated_at) merged_at, a.name agent_name,
+    COALESCE(o.plan ->> '$.summary', o.text) order_title,
+    (SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE task_id = t.id) cost_usd,
+    (SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM runs WHERE task_id = t.id) tokens
+    FROM tasks t LEFT JOIN agents a ON a.id = t.agent_id LEFT JOIN orders o ON o.id = t.order_id
+    WHERE t.project_id = ? AND t.merged = 1 ORDER BY merged_at DESC, t.id DESC LIMIT 300`, project(req).id))
+})
+
 app.get('/api/projects/:id/tasks', (req, res) => {
   const p = project(req), { agent_id, order_id } = req.query
   let sql = 'SELECT t.*, a.name agent_name FROM tasks t LEFT JOIN agents a ON a.id = t.agent_id WHERE t.project_id = ?'
