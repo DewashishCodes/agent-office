@@ -76,3 +76,20 @@ test('cancelTask: dependents block, failTask cannot revive it, last task cancels
   cancelTask(b)
   assert.equal(getOrder(o).status, 'canceled')
 })
+
+test('markMerged removes the task worktree', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { existsSync } = await import('node:fs')
+  const { markMerged } = await import('../server/scheduler.js')
+  const repo = mkdtempSync(join(tmpdir(), 'crew-repo-')), wt = repo + '-wt'
+  const git = (...a) => execFileSync('git', a, { cwd: repo })
+  git('init', '-q'); git('-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'x')
+  git('worktree', 'add', '-q', '-b', 'crew/t1', wt)
+  const pid = insert('projects', { name: 'w', repo: 'o/w', local_path: repo, paused: 1 })
+  const o = insert('orders', { project_id: pid, text: 'w', status: 'in_progress' })
+  const t = insert('tasks', { project_id: pid, order_id: o, title: 'w', role: 'backend', status: 'done', worktree: wt })
+  assert.ok(existsSync(wt))
+  markMerged(t)
+  for (let i = 0; i < 50 && existsSync(wt); i++) await new Promise(r => setTimeout(r, 100))
+  assert.equal(existsSync(wt), false)
+})
