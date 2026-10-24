@@ -106,9 +106,7 @@ function answer(run_id, request_id, allow, { message, remember } = {}) {
 function retryTask(id, note) {
   const old = getTask(id)
   const deps = old.depends_on.filter(d => getTask(d)?.status !== 'canceled')
-  const notes = note ? `${old.notes ? `${old.notes}
-
-` : ''}From the owner: ${note}` : ''
+  const notes = note ? `${old.notes ? `${old.notes}\n\n` : ''}From the owner: ${note}` : ''
   const t = setTask(id, { attempts: 0, notes, status: 'planned', depends_on: deps })
   kick()
   return t
