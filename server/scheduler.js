@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
 import { runClaude, tokensToday, projectTokensToday, projectCostToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
+import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo, fetchOrigin } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -21,8 +21,11 @@ export const denyRules = project => [...TASK_DISALLOWED, ...project.settings.pro
 
 // acceptEdits asks for anything outside the policy; autonomous agents keep the old bypass behavior.
 export const agentMode = agent => (agent.permissions?.autonomous ? 'bypassPermissions' : 'acceptEdits')
-export const policyFor = (project, agent, cwd) => (tool, input) =>
-  permissionPolicy({ ...project.settings, read_roots: [vaultDir(project.id)] }, agent, tool, input, cwd)
+// extraBash widens the allow list for one run only, e.g. git rebase while resolving conflicts.
+export const policyFor = (project, agent, cwd, extraBash) => (tool, input) => permissionPolicy({
+  ...project.settings, read_roots: [vaultDir(project.id)],
+  auto_allow_bash: extraBash ? `${project.settings.auto_allow_bash}|${extraBash}` : project.settings.auto_allow_bash,
+}, agent, tool, input, cwd)
 export const MAX_ATTEMPTS = 2
 
 const pexec = promisify(execFile)
@@ -143,13 +146,15 @@ async function runTask(task_id) {
   // Retries keep the first base so the gate and Reviewer see the whole branch.
   const base_sha = t.base_sha || await git(wt.path, 'rev-parse', 'HEAD')
   t = setTask(task_id, { branch, worktree: wt.path, base_sha })
+  const resolving = t.conflict === 2
+  if (resolving) await fetchOrigin(wt.path)
   log(project.id, 'dispatch', `${agent.name} started "${t.title}"${t.attempts ? ` (attempt ${t.attempts + 1})` : ''}`, { task_id, agent_id: agent.id, order_id: t.order_id })
   issueStatus(project, t, 'in_progress')
 
   const common = {
     project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path, systemPrompt: SYSTEM_TASK(agent, t, project),
     model: agent.model, effort: agent.effort, permissionMode: agentMode(agent), disallowedTools: denyRules(project),
-    permissionPolicy: policyFor(project, agent, wt.path), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
+    permissionPolicy: policyFor(project, agent, wt.path, resolving && '^git (rebase|merge-base|checkout --(ours|theirs))\b'), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
   }
   // Feedback on a retry goes into the same session when the last one ended cleanly: it already knows the code it wrote.
   const prev = t.attempts && t.notes ? get(`SELECT session_id, status, agent_id FROM runs WHERE task_id = ? AND kind = 'task' ORDER BY id DESC`, task_id) : null
@@ -171,7 +176,9 @@ async function runTask(task_id) {
   setTask(task_id, { result: r.text })
 
   await commitAll(wt.path, `${t.title} (crew task ${t.id})`)
-  const files = await changedFiles(wt.path, base_sha)
+  // After a rebase the old base is gone from the branch; the gate and review compare against where it now sits.
+  if (resolving) t = setTask(task_id, { base_sha: await git(wt.path, 'merge-base', 'HEAD', `origin/${project.default_branch}`) })
+  const files = await changedFiles(wt.path, t.base_sha)
   if (!files.length) return failTask(task_id, 'No files changed. Make the change and commit it.')
   const bad = files.filter(f => !isAllowed(f, agent.owned_paths, project.settings.protected_paths))
   if (bad.length) {
@@ -190,7 +197,8 @@ async function runTask(task_id) {
     log(project.id, 'hotfix', `${agent.name} pushed hotfix "${t.title}" straight to ${project.default_branch}`, { task_id, agent_id: agent.id, order_id: t.order_id })
     return markMerged(task_id)
   }
-  await pushBranch(wt.path, branch)
+  await pushBranch(wt.path, branch, { force: resolving })
+  if (resolving) t = setTask(task_id, { conflict: 0 })
   if (!t.pr_number) {
     const pr = await createPR(project, { branch, title: t.title, body: prBody(t) })
     t = setTask(task_id, { pr_number: pr.number, pr_url: pr.url })
