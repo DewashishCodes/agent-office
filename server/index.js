@@ -14,7 +14,7 @@ import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './o
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
-import { matchAgent, loginLimiter } from './rules.js'
+import { matchAgent, loginLimiter, rememberPattern } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
@@ -72,6 +72,26 @@ function profileFields(body) {
     if (!EDITABLE[k](v)) throw fail(400, `invalid ${k}`)
   }
   return body
+}
+
+// "Allow, don't ask again": checked before the answer so a refused pattern leaves the request open for a plain Allow.
+function answer(run_id, request_id, allow, { message, remember } = {}) {
+  let add
+  if (allow && remember) {
+    const r = found(get('SELECT project_id, pending_permission FROM runs WHERE id = ?', run_id), 'run')
+    const req = found((r.pending_permission || []).find(x => x.request_id === request_id), 'permission request')
+    if (req.tool_name !== 'Bash') throw fail(400, 'Only shell commands can be remembered')
+    add = rememberPattern(req.input?.command)
+    if (add.error) throw fail(400, add.error)
+    add.project = getProject(r.project_id)
+  }
+  answerPermission(run_id, request_id, allow, { message })
+  if (!add) return
+  const s = add.project.settings, re = `${s.auto_allow_bash}|${add.pattern}`
+  if (new RegExp(s.auto_allow_bash).test(add.prefix) || !regex(re)) return
+  update('projects', add.project.id, { settings: { ...s, auto_allow_bash: re } })
+  emit('project', add.project.id, getProject(add.project.id))
+  log(add.project.id, 'settings', `"${add.prefix}" no longer asks for permission`)
 }
 
 // A retry goes ahead without dependencies the owner canceled; they would never finish.
@@ -511,8 +531,8 @@ app.post('/api/runs/:id/kill', (req, res) => {
 })
 
 app.post('/api/runs/:id/permission', (req, res) => {
-  const { request_id, allow, message } = req.body ?? {}
-  answerPermission(runRow(req).id, str(request_id, 'request_id'), allow === true, { message: typeof message === 'string' ? message : undefined })
+  const { request_id, allow, message, remember } = req.body ?? {}
+  answer(runRow(req).id, str(request_id, 'request_id'), allow === true, { message: typeof message === 'string' ? message : undefined, remember: remember === true })
   res.json({ ok: true })
 })
 
@@ -697,14 +717,14 @@ app.get('/api/projects/:id/inbox', (req, res) => {
 app.post('/api/inbox/:id/action', async (req, res) => {
   const item = found(get('SELECT * FROM inbox WHERE id = ?', int(req.params.id)), 'inbox item')
   if (item.status !== 'open') throw fail(409, 'already resolved')
-  const { action, text } = req.body ?? {}
+  const { action, text, remember } = req.body ?? {}
   const key = `${item.kind}:${action}`
   let status = 200
   if (item.kind === 'permission') {
     if (!['allow', 'deny', 'dismiss'].includes(action)) throw fail(400, `unknown action ${action} for permission`)
     // A run that already ended leaves nothing to answer; the item still closes.
-    try { answerPermission(item.run_id, item.ref, action === 'allow', { message: typeof text === 'string' && text.trim() ? text : undefined }) }
-    catch (e) { resolveInbox(item.id); throw e }
+    try { answer(item.run_id, item.ref, action === 'allow', { message: typeof text === 'string' && text.trim() ? text : undefined, remember: remember === true }) }
+    catch (e) { if (e.status !== 400) resolveInbox(item.id); throw e }
   } else if (action === 'dismiss' && item.kind !== 'plan') {
     // nothing to run
   } else if (key === 'plan:approve') await approvePlan(found(item.order_id, 'order'))

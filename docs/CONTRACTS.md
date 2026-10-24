@@ -264,10 +264,10 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 | --- | --- | --- |
 | GET | /api/projects/:id/wall | agents with newest run, open orders with task counts, pending permissions, last 50 crew messages |
 | GET | /api/runs/:id, /api/runs/:id/events?after=&tail= | run row, transcript rows |
-| POST | /api/runs/:id/send `{text}`, /interrupt, /resume `{text?}`, /handoff, /kill, /permission `{request_id, allow, message?}` | intervention; kill blocks the task without an attempt |
+| POST | /api/runs/:id/send `{text}`, /interrupt, /resume `{text?}`, /handoff, /kill, /permission `{request_id, allow, message?, remember?}` | intervention; kill blocks the task without an attempt |
 | POST | /api/projects/:id/tasks `{agent, title, description?, acceptance?, files?}` | quick task: one-task order for a named agent |
 | ALL | /mcp/:token | crew MCP |
-Inbox: `permission` items take `allow | deny | dismiss`; `question:answer` on an agent's item goes back to that agent.
+Inbox: `permission` items take `allow | deny | dismiss` (`remember: true` with allow appends `rules.rememberPattern` of a Bash command to `settings.auto_allow_bash`; a refused pattern is a 400 and the request stays open); `question:answer` on an agent's item goes back to that agent.
 
 ### Events
 `run_event {run_id, seq, type, json, created_at}`, `run_delta {run_id, text}` (live text, not stored), `crew_message` (row with from_name, to_name).
