@@ -206,3 +206,15 @@ test('loginLimiter: blocks an IP after max misses until the window passes, per I
   l.miss('b', 0); l.clear('b')
   assert.equal(l.blocked('b', 0), false)
 })
+
+test('rememberPattern: first word, or two for git and npm, never an open-ended tool', async () => {
+  const { rememberPattern } = await import('../server/rules.js')
+  assert.deepEqual(rememberPattern('cd "C:/work/crew-t1" && git fetch origin'), { prefix: 'git fetch', pattern: '^git fetch\\b' })
+  assert.deepEqual(rememberPattern('tsc --noEmit'), { prefix: 'tsc', pattern: '^tsc\\b' })
+  assert.equal(rememberPattern('./gradlew.bat test').pattern, '^\\./gradlew\\.bat\\b')
+  for (const c of ['bash -c "x"', 'node -e x', 'npx foo', 'rm -rf build', 'git push', 'curl x', 'echo $(x)', 'ls && pwd'])
+    assert.ok(rememberPattern(c).error, c)
+  const S2 = { ...S, auto_allow_bash: `${S.auto_allow_bash}|${rememberPattern('tsc --noEmit').pattern}` }
+  assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc --noEmit -p web' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc -p /etc' }, CWD), 'ask')
+})

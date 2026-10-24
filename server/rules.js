@@ -295,3 +295,23 @@ export function loginLimiter({ max = 10, windowMs = 15 * 60 * 1000 } = {}) {
     clear: ip => misses.delete(ip),
   }
 }
+
+// Tools whose second word is the real command (git fetch, npm audit); remembering only the first would allow them all.
+const SUBCOMMANDS = ['git', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'docker', 'kubectl', 'pip', 'uv', 'dotnet', 'composer', 'bundle']
+// Wrappers and interpreters run any command they are given, so "don't ask again" for them would allow everything.
+const OPEN_ENDED = /^(bash|sh|zsh|fish|cmd|powershell|pwsh|env|sudo|su|xargs|eval|exec|nohup|time|timeout|watch|node|python3?|py|ruby|perl|php|deno|npx|bunx|pnpx|curl|wget|ssh|scp|rm|chmod|chown|dd|git (push|reset|clean|config|filter-branch)|gh)$/
+
+// "Allow, don't ask again": the command's first word (or first two for git, npm...) as a pattern for auto_allow_bash.
+// Returns { prefix, pattern } or { error }. A1's path check still applies to anything the pattern allows.
+export function rememberPattern(command) {
+  // Agents lead with cd "<worktree>" &&, an absolute path bashParts would refuse without the run's cwd.
+  const parts = bashParts(String(command || '').replace(/^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/, ''))
+  if (!parts) return { error: 'This command can hide another one or reach outside the worktree; allow it once instead.' }
+  const rest = parts.filter(p => !/^cd(\s|$)/.test(p))
+  if (rest.length !== 1) return { error: 'Only a single command can be remembered; allow it once instead.' }
+  const words = rest[0].split(/\s+/)
+  const prefix = (SUBCOMMANDS.includes(words[0]) && words[1] && !words[1].startsWith('-') ? words.slice(0, 2) : words.slice(0, 1)).join(' ')
+  if (!/^[\w./-]+( [\w.:-]+)?$/.test(prefix)) return { error: 'That command cannot be remembered; allow it once instead.' }
+  if (OPEN_ENDED.test(prefix)) return { error: `${prefix} can run anything; allow it once instead.` }
+  return { prefix, pattern: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b` }
+}
