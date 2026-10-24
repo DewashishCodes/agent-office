@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, orderStatus, useAction } from '../ui.jsx'
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from './Wall.jsx'
 import { PlanCard } from './Command.jsx'
@@ -286,7 +286,7 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
                 <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
                 {o.status === 'awaiting_approval' ? <Badge status="plan">Plan ready</Badge> : total > 0
                   ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
-                  : <Badge status={o.status} />}
+                  : <Badge status={orderStatus(o)} />}
                 <More label={`Actions for ${o.plan?.summary || o.text}`}>
                   <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
                   <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
