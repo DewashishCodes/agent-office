@@ -24,7 +24,7 @@ export default function Permission({ req, who, onAnswer }) {
   const answer = (allow, remember) => run(() => onAnswer(allow, remember))
   return (
     <div className="permission">
-      <p className="small">{who ? <b>{who} </b> : null}{bash ? 'asks to run' : `asks to use ${req.tool_name || 'a tool'}`}</p>
+      {who && <p className="small"><b>{who}</b> {bash ? 'asks to run' : `asks to use ${req.tool_name || 'a tool'}`}</p>}
       <pre className="code">{bash ? shown(req.input?.command) : req.summary || req.input?.file_path || req.input?.path || req.tool_name}</pre>
       {files.length > 0 && <p className="small">Writes <span className="mono">{files.join(', ')}</span></p>}
       <details className="small">
