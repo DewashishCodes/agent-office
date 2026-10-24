@@ -14,7 +14,7 @@ import { chat, chatFor, newChat, revisePlan, approvePlan, rejectPlan } from './o
 import { start, kick, markMerged, mergeTask, markOnboarded, cancelOrder, cancelTask, resumeChecks, removeAgent, pauseAgent, resumeAgent } from './scheduler.js'
 import { initNotify, publicKey } from './notify.js'
 import { mcpHandler, answerFromOwner } from './crewmcp.js'
-import { matchAgent, loginLimiter, rememberPattern } from './rules.js'
+import { matchAgent, loginLimiter, rememberPattern, estimates } from './rules.js'
 import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, filePath, repoDocs, readDoc } from './vault.js'
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
@@ -347,7 +347,10 @@ const order = req => found(getOrder(int(req.params.id)), 'order')
 
 app.get('/api/orders/:id', (req, res) => {
   const o = order(req)
-  res.json({ ...get(`SELECT ${ORDER_COST} FROM orders o WHERE id = ?`, o.id), ...o, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
+  // A plan waiting for approval gets estimates per size from this project's finished tasks.
+  const est = o.status === 'awaiting_approval' && estimates(all(`SELECT t.size, SUM(r.input_tokens + r.output_tokens) tokens, SUM(r.cost_usd) cost
+    FROM tasks t JOIN runs r ON r.task_id = t.id WHERE t.project_id = ? AND (t.status = 'done' OR t.merged = 1) GROUP BY t.id`, o.project_id))
+  res.json({ ...get(`SELECT ${ORDER_COST} FROM orders o WHERE id = ?`, o.id), ...o, estimates: est || null, tasks: all('SELECT * FROM tasks WHERE order_id = ? ORDER BY id', o.id) })
 })
 
 app.post('/api/orders/:id/approve', async (req, res) => {
