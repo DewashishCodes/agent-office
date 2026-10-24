@@ -154,7 +154,7 @@ async function runTask(task_id) {
   const common = {
     project_id: project.id, agent_id: agent.id, task_id, kind: 'task', cwd: wt.path, systemPrompt: SYSTEM_TASK(agent, t, project),
     model: agent.model, effort: agent.effort, permissionMode: agentMode(agent), disallowedTools: denyRules(project),
-    permissionPolicy: policyFor(project, agent, wt.path, resolving && '^git (rebase|merge-base|checkout --(ours|theirs))\b'), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
+    permissionPolicy: policyFor(project, agent, wt.path, resolving && '^git (rebase|merge-base|checkout --(ours|theirs))\\b'), mcp: CREW_TOOLS, allowedTools: mcpNames(CREW_TOOLS),
   }
   // Feedback on a retry goes into the same session when the last one ended cleanly: it already knows the code it wrote.
   const prev = t.attempts && t.notes ? get(`SELECT session_id, status, agent_id FROM runs WHERE task_id = ? AND kind = 'task' ORDER BY id DESC`, task_id) : null
