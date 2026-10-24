@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, label, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import TaskFacts from '../components/TaskFacts.jsx'
 
 const COLS = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['done', 'Done'], ['blocked', 'Blocked']]
