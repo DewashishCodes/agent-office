@@ -201,6 +201,7 @@ addColumn('runs', 'pending_permission', 'TEXT')                 // JSON array of
 addColumn('runs', 'terminal', 'INTEGER NOT NULL DEFAULT 0')                   // 1 = ran in a real terminal, replay from data/pty/run-<id>.log
 addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name the plan assigned; matchAgent prefers it
 addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
+addColumn('tasks', 'resume_session', 'TEXT')                    // session cut off by a restart; the next run resumes it
 addColumn('tasks', 'checks', 'TEXT')                            // CI on the PR: pass | fail | pending | none, from the PR poll
 addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock
 addColumn('inbox', 'run_id', 'INTEGER')
