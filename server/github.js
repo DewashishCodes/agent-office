@@ -175,6 +175,7 @@ export const pullDefault = serial(pullDefaultNow)
 export const createWorktree = serial(createWorktreeNow)
 export const removeWorktree = serial(removeWorktreeNow)
 export const pushBranch = serial(pushBranchNow)
+export const fetchOrigin = serial(path => git(path, 'fetch', 'origin'))
 
 // Owner folders: the crew never works in them. It reads what is there, and for a folder with no GitHub remote creates a
 // private repo from it; after that the crew works in its own clone like any GitHub project.
