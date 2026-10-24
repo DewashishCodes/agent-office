@@ -218,3 +218,12 @@ test('rememberPattern: first word, or two for git and npm, never an open-ended t
   assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc --noEmit -p web' }, CWD), 'allow')
   assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc -p /etc' }, CWD), 'ask')
 })
+
+test('estimates: median of done tasks per size, a guess where there are none', async () => {
+  const { estimates } = await import('../server/rules.js')
+  const e = estimates([{ size: 'S', tokens: 100, cost: 1 }, { size: 'S', tokens: 300, cost: 3 }, { size: 'S', tokens: 900, cost: 2 }, { size: 'M', tokens: 10, cost: 4 }, { size: 'M', tokens: 20, cost: 6 }])
+  assert.deepEqual(e.S, { tokens: 300, cost: 2, n: 3 })
+  assert.deepEqual(e.M, { tokens: 15, cost: 5, n: 2 })
+  assert.equal(e.L.n, 0)
+  assert.ok(e.L.cost > 0)
+})
