@@ -1,4 +1,4 @@
-import { posix, relative, isAbsolute, resolve } from 'node:path'
+import { posix, win32, relative, isAbsolute, resolve } from 'node:path'
 
 // Pure helpers. No db/runner/github imports so tests run without them.
 
@@ -70,9 +70,11 @@ export const isAllowed = (file, owned = [], protectedPaths = []) =>
   !protectedPaths.some(p => match(file, p)) && owned.some(o => match(file, o))
 
 // Path relative to cwd with forward slashes, or null when it points outside cwd.
+// A drive-letter cwd is a Windows path on any host, so the same rules hold in tests on Linux and macOS.
 const inside = (cwd, p) => {
-  const r = relative(cwd, resolve(cwd, String(p))).replaceAll('\\', '/')
-  return r.startsWith('..') || isAbsolute(r) ? null : r
+  const path = /^[A-Za-z]:/.test(String(cwd)) ? win32 : { relative, resolve, isAbsolute }
+  const r = path.relative(cwd, path.resolve(cwd, String(p))).replaceAll('\\', '/')
+  return r.startsWith('..') || path.isAbsolute(r) ? null : r
 }
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep', 'LS']
