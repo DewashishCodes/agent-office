@@ -51,7 +51,7 @@ export default function Board({ pid, project, orderId }) {
             <summary>
               <span className="grow title clip">#{o.id} {o.plan?.summary || o.text}</span>
               <Badge status={orderStatus(o)} />
-              {o.total > 0 && <span className="muted small">{o.done}/{o.total}</span>}
+              {o.total > 0 && <span className="muted small">{o.done}/{o.total}, ${Number(o.cost_usd || 0).toFixed(2)}</span>}
             </summary>
             <div className="list">{list.map(card)}</div>
           </details>
