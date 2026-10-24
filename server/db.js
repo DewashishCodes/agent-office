@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { emit } from './bus.js'
 
@@ -201,6 +201,7 @@ addColumn('runs', 'pending_permission', 'TEXT')                 // JSON array of
 addColumn('runs', 'terminal', 'INTEGER NOT NULL DEFAULT 0')                   // 1 = ran in a real terminal, replay from data/pty/run-<id>.log
 addColumn('tasks', 'plan_agent', 'TEXT')                        // agent name the plan assigned; matchAgent prefers it
 addColumn('tasks', 'result', 'TEXT')                            // final message of the last task run, handed to dependents
+addColumn('tasks', 'checks', 'TEXT')                            // CI on the PR: pass | fail | pending | none, from the PR poll
 addColumn('tasks', 'wait_reason', 'TEXT')                       // why a ready task is not starting, e.g. a file lock
 addColumn('inbox', 'run_id', 'INTEGER')
 addColumn('inbox', 'ref', 'TEXT')
@@ -228,6 +229,20 @@ for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, 
 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
+// Terminal logs go with them; prompt files belong to runs, and no run survives a restart.
+const sweep = (dir, maxAge = 0) => {
+  if (!existsSync(dir)) return
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f)
+    try { if (!maxAge || statSync(p).mtimeMs < Date.now() - maxAge) rmSync(p, { force: true }) } catch {}
+  }
+}
+sweep(join(DATA_DIR, 'pty'), 14 * 86400000)
+sweep(join(DATA_DIR, 'prompts'))
+
+// Settings saves the whole form, so projects that saved once kept the old wide default; they follow the new one again.
+const OLD_BASH = '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b'
+db.prepare("UPDATE projects SET settings = json_remove(settings, '$.auto_allow_bash') WHERE json_valid(settings) AND json_extract(settings, '$.auto_allow_bash') = ?").run(OLD_BASH)
 
 export const DEFAULT_SETTINGS = {
   protected_paths: ['.env*', '**/.env*', '**/*.pem', '**/*.key', '**/secrets/**', '.github/workflows/**', '**/migrations/**'],
@@ -237,7 +252,7 @@ export const DEFAULT_SETTINGS = {
   project_daily_token_budget: 20000000,
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
-  auto_allow_bash: '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
+  auto_allow_bash: '^(npm (test|ci|run \\S+)\\b|npm (install|i)\\s*$|(pnpm|yarn) (test|run \\S+)\\b|(pnpm|yarn)( install)?\\s*$|node (--test\\b|(?!-)\\S+)|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().

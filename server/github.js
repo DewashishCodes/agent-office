@@ -141,9 +141,8 @@ export async function prMergeable(project, number) {
 
 const FAILED = ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
 
-export async function prState(project, number) {
-  const r = JSON.parse(await gh('pr', 'view', String(number), '-R', project.repo, '--json', 'state,statusCheckRollup'))
-  const checks = r.statusCheckRollup || []
+// pass | fail | pending | none from a PR's statusCheckRollup.
+function checksState(checks = []) {
   // CheckRun has status/conclusion, StatusContext has state.
   const results = checks.map(c => c.conclusion || c.state || '')
   let state = 'none'
@@ -152,7 +151,18 @@ export async function prState(project, number) {
     else if (checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED', ''].includes(c.conclusion || c.state || ''))) state = 'pending'
     else state = 'pass'
   }
-  return { state: r.state, checks: state }
+  return state
+}
+
+export async function prState(project, number) {
+  const r = JSON.parse(await gh('pr', 'view', String(number), '-R', project.repo, '--json', 'state,statusCheckRollup'))
+  return { state: r.state, checks: checksState(r.statusCheckRollup || []) }
+}
+
+// The project's latest PRs in one call, number -> { state, checks }; older ones need prState.
+export async function prStates(project) {
+  const list = JSON.parse(await gh('pr', 'list', '-R', project.repo, '--state', 'all', '--limit', '100', '--json', 'number,state,statusCheckRollup'))
+  return new Map(list.map(r => [r.number, { state: r.state, checks: checksState(r.statusCheckRollup || []) }]))
 }
 
 export async function prDiff(project, number) {

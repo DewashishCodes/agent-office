@@ -1,4 +1,4 @@
-import { posix, relative, isAbsolute, resolve } from 'node:path'
+import { posix, win32, relative, isAbsolute, resolve } from 'node:path'
 
 // Pure helpers. No db/runner/github imports so tests run without them.
 
@@ -70,9 +70,11 @@ export const isAllowed = (file, owned = [], protectedPaths = []) =>
   !protectedPaths.some(p => match(file, p)) && owned.some(o => match(file, o))
 
 // Path relative to cwd with forward slashes, or null when it points outside cwd.
+// A drive-letter cwd is a Windows path on any host, so the same rules hold in tests on Linux and macOS.
 const inside = (cwd, p) => {
-  const r = relative(cwd, resolve(cwd, String(p))).replaceAll('\\', '/')
-  return r.startsWith('..') || isAbsolute(r) ? null : r
+  const path = /^[A-Za-z]:/.test(String(cwd)) ? win32 : { relative, resolve, isAbsolute }
+  const r = path.relative(cwd, path.resolve(cwd, String(p))).replaceAll('\\', '/')
+  return r.startsWith('..') || path.isAbsolute(r) ? null : r
 }
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep', 'LS']
@@ -93,7 +95,7 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
     return 'allow'
   }
   if (tool === 'Bash') {
-    const parts = bashParts(input.command)
+    const parts = bashParts(input.command, { cwd })
     if (!parts) return 'ask'
     const ok = new RegExp(settings.auto_allow_bash)
     return parts.every(s => ok.test(s) || localCurl(s)) ? 'allow' : 'ask'
@@ -102,9 +104,9 @@ export function permissionPolicy(settings, agent, tool, input = {}, cwd) {
 }
 
 // A Bash command as its simple parts, or null when it can hide another command (substitutions) or reach outside the
-// worktree (find -exec/-delete, redirects out of it). Quoted strings and heredoc bodies are data: they keep their words
-// but lose separators.
-function bashParts(command, { noRedirects = false } = {}) {
+// worktree (find -exec/-delete, redirects or path arguments out of it). Quoted strings and heredoc bodies are data: they
+// keep their words but lose separators.
+function bashParts(command, { noRedirects = false, cwd } = {}) {
   const cmd = String(command || '').trim()
   // Substitutions can hide any command inside an allowed one. Quoted heredocs ('EOF') and single quotes never expand.
   const literal = cmd.replace(/<<-?\s*(['"])(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, '<<\n').replace(/'[^']*'/g, "''")
@@ -115,8 +117,22 @@ function bashParts(command, { noRedirects = false } = {}) {
   // Read-only callers: any write redirect (other than to /dev/null or 2>&1) is a write.
   if (noRedirects && /(^|[^0-9&])>+(?!\s*\/dev\/null|&)/.test(bare)) return null
   // Split on && || ; | newlines and a lone & (not 2>&1); drop subshell parens and VAR=value prefixes.
-  return bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
+  const parts = bare.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)
     .map(s => s.trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').replace(/^(\w+=\S*\s+)+/, '').trim()).filter(Boolean)
+  return parts.some(p => outsideArg(p, cwd)) ? null : parts
+}
+
+// An allowed command (cat, head) is only as safe as the files it is pointed at: an argument that is absolute, starts
+// with ~ or climbs with .. must stay inside cwd. A quoted string with spaces (a commit message) counts only when it
+// starts like a path.
+function outsideArg(part, cwd) {
+  return (part.match(/"(\\.|[^"\\])*"|'[^']*'|\S+/g) || []).some(tok => {
+    const t = tok.replace(/^(["'])([\s\S]*)\1$/, '$2').replace(/^\d*[<>]+&?/, '').replace(/^-[\w-]*=/, '')
+    const message = /^["']/.test(tok) && /\s/.test(t)
+    const pathy = /^([/\\~]|[A-Za-z]:[/\\])/.test(t) || (!message && /(^|[/\\])\.\.([/\\]|$)/.test(t))
+    if (!pathy || /^\/dev\/null$|^\/tmp\//.test(t)) return false
+    return t.startsWith('~') || !cwd || inside(cwd, t) === null
+  })
 }
 
 // Commands Support may run without asking: they look, they never change anything.
@@ -146,7 +162,7 @@ export function supportPolicy(settings, tool, input = {}, cwd) {
     return r === null ? 'ask' : 'allow'
   }
   if (tool === 'Bash') {
-    const parts = bashParts(input.command, { noRedirects: true })
+    const parts = bashParts(input.command, { noRedirects: true, cwd })
     if (!parts) return 'ask'
     return parts.every(s => (LOOK.test(s) && !/^(find|rg|grep)\b.*\s-(delete|exec)/.test(s)) || localCurl(s) || readOnlySql(s)) ? 'allow' : 'ask'
   }
@@ -278,4 +294,24 @@ export function loginLimiter({ max = 10, windowMs = 15 * 60 * 1000 } = {}) {
     },
     clear: ip => misses.delete(ip),
   }
+}
+
+// Tools whose second word is the real command (git fetch, npm audit); remembering only the first would allow them all.
+const SUBCOMMANDS = ['git', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'docker', 'kubectl', 'pip', 'uv', 'dotnet', 'composer', 'bundle']
+// Wrappers and interpreters run any command they are given, so "don't ask again" for them would allow everything.
+const OPEN_ENDED = /^(bash|sh|zsh|fish|cmd|powershell|pwsh|env|sudo|su|xargs|eval|exec|nohup|time|timeout|watch|node|python3?|py|ruby|perl|php|deno|npx|bunx|pnpx|curl|wget|ssh|scp|rm|chmod|chown|dd|git (push|reset|clean|config|filter-branch)|gh)$/
+
+// "Allow, don't ask again": the command's first word (or first two for git, npm...) as a pattern for auto_allow_bash.
+// Returns { prefix, pattern } or { error }. A1's path check still applies to anything the pattern allows.
+export function rememberPattern(command) {
+  // Agents lead with cd "<worktree>" &&, an absolute path bashParts would refuse without the run's cwd.
+  const parts = bashParts(String(command || '').replace(/^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/, ''))
+  if (!parts) return { error: 'This command can hide another one or reach outside the worktree; allow it once instead.' }
+  const rest = parts.filter(p => !/^cd(\s|$)/.test(p))
+  if (rest.length !== 1) return { error: 'Only a single command can be remembered; allow it once instead.' }
+  const words = rest[0].split(/\s+/)
+  const prefix = (SUBCOMMANDS.includes(words[0]) && words[1] && !words[1].startsWith('-') ? words.slice(0, 2) : words.slice(0, 1)).join(' ')
+  if (!/^[\w./-]+( [\w.:-]+)?$/.test(prefix)) return { error: 'That command cannot be remembered; allow it once instead.' }
+  if (OPEN_ENDED.test(prefix)) return { error: `${prefix} can run anything; allow it once instead.` }
+  return { prefix, pattern: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b` }
 }

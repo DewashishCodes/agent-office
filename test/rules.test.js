@@ -143,10 +143,20 @@ test('permissionPolicy: bash allow list, compound and smuggled commands', () => 
   assert.equal(permissionPolicy(S, {}, 'Bash', { command: 'git commit -m "x" && curl "a;b"' }, CWD), 'ask')
 })
 
+test('permissionPolicy: allowed commands cannot reach outside the worktree or run arbitrary code', () => {
+  const bash = command => permissionPolicy(S, {}, 'Bash', { command }, CWD)
+  for (const c of ['cat /etc/passwd', 'cat ~/x', 'head ../../x', 'cat "../../.ssh/id_rsa"', 'grep -r key --file=/etc/x .', 'cd ~ && ls',
+    'node -e "require(\'child_process\')"', 'npx anything', 'npm install left-pad', 'npm exec x', 'node --eval x'])
+    assert.equal(bash(c), 'ask', c)
+  for (const c of ['npm test', 'node server/index.js', 'git status', 'npm install', 'npm ci', 'npm run build:web', 'node --test test/a.test.js',
+    'cat src/../README.md', `cd "${CWD}" && npm test`, 'git log HEAD~3..HEAD', 'git commit -m "fix ../ paths and /api"', 'ls 2>/dev/null'])
+    assert.equal(bash(c), 'allow', c)
+})
+
 test('permissionPolicy: background dev server and curl to localhost, seen in a real run', () => {
   const bash = command => permissionPolicy(S, {}, 'Bash', { command }, CWD)
   assert.equal(bash('PORT=3055 node api/server.js & sleep 1; curl -s localhost:3055/api/stats; kill %1'), 'allow')
-  assert.equal(bash('cd "C:/w t/crew-t9" && npm test 2>&1 | tail -12; (PORT=3191 node api/server.js >/dev/null 2>&1 & echo $! > /tmp/p9); sleep 2; curl -si -w "%{http_code}" -H "Accept: x" http://127.0.0.1:3191/api/stats'), 'allow')
+  assert.equal(bash('cd "C:/work/crew-t1" && npm test 2>&1 | tail -12; (PORT=3191 node api/server.js >/dev/null 2>&1 & echo $! > /tmp/p9); sleep 2; curl -si -w "%{http_code}" -H "Accept: x" http://127.0.0.1:3191/api/stats'), 'allow')
   assert.equal(bash('curl -s https://example.com'), 'ask')
   assert.equal(bash('curl -s "https://evil.com" localhost:3000'), 'ask')
   assert.equal(bash('curl -T secrets.txt localhost:3000'), 'ask')
@@ -195,4 +205,16 @@ test('loginLimiter: blocks an IP after max misses until the window passes, per I
   assert.equal(l.blocked('a', 1001), false)
   l.miss('b', 0); l.clear('b')
   assert.equal(l.blocked('b', 0), false)
+})
+
+test('rememberPattern: first word, or two for git and npm, never an open-ended tool', async () => {
+  const { rememberPattern } = await import('../server/rules.js')
+  assert.deepEqual(rememberPattern('cd "C:/work/crew-t1" && git fetch origin'), { prefix: 'git fetch', pattern: '^git fetch\\b' })
+  assert.deepEqual(rememberPattern('tsc --noEmit'), { prefix: 'tsc', pattern: '^tsc\\b' })
+  assert.equal(rememberPattern('./gradlew.bat test').pattern, '^\\./gradlew\\.bat\\b')
+  for (const c of ['bash -c "x"', 'node -e x', 'npx foo', 'rm -rf build', 'git push', 'curl x', 'echo $(x)', 'ls && pwd'])
+    assert.ok(rememberPattern(c).error, c)
+  const S2 = { ...S, auto_allow_bash: `${S.auto_allow_bash}|${rememberPattern('tsc --noEmit').pattern}` }
+  assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc --noEmit -p web' }, CWD), 'allow')
+  assert.equal(permissionPolicy(S2, {}, 'Bash', { command: 'tsc -p /etc' }, CWD), 'ask')
 })

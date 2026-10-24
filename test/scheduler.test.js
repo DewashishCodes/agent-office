@@ -76,3 +76,36 @@ test('cancelTask: dependents block, failTask cannot revive it, last task cancels
   cancelTask(b)
   assert.equal(getOrder(o).status, 'canceled')
 })
+
+test('markMerged removes the task worktree', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { existsSync } = await import('node:fs')
+  const { markMerged } = await import('../server/scheduler.js')
+  const repo = mkdtempSync(join(tmpdir(), 'crew-repo-')), wt = repo + '-wt'
+  const git = (...a) => execFileSync('git', a, { cwd: repo })
+  git('init', '-q'); git('-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'x')
+  git('worktree', 'add', '-q', '-b', 'crew/t1', wt)
+  const pid = insert('projects', { name: 'w', repo: 'o/w', local_path: repo, paused: 1 })
+  const o = insert('orders', { project_id: pid, text: 'w', status: 'in_progress' })
+  const t = insert('tasks', { project_id: pid, order_id: o, title: 'w', role: 'backend', status: 'done', worktree: wt })
+  assert.ok(existsSync(wt))
+  markMerged(t)
+  for (let i = 0; i < 50 && existsSync(wt); i++) await new Promise(r => setTimeout(r, 100))
+  assert.equal(existsSync(wt), false)
+})
+
+test('poll: one PR list call per project, checks stored, merges marked', async () => {
+  const { poll } = await import('../server/scheduler.js')
+  const { run } = await import('../server/db.js')
+  run('UPDATE tasks SET pr_number = NULL')
+  const p1 = insert('projects', { name: 'a', repo: 'o/a', paused: 1 }), p2 = insert('projects', { name: 'b', repo: 'o/b', paused: 1 })
+  const ids = [p1, p1, p1, p2].map((pid, i) => insert('tasks', { project_id: pid, order_id: insert('orders', { project_id: pid, text: 'x' }), title: 't', role: 'backend', status: 'done', pr_number: i + 1 }))
+  const calls = [], single = []
+  const list = async p => { calls.push(p.id); return new Map([[1, { state: 'OPEN', checks: 'fail' }], [2, { state: 'MERGED', checks: 'pass' }], [4, { state: 'OPEN', checks: 'pending' }]]) }
+  const one = async (p, n) => { single.push(n); return { state: 'OPEN', checks: 'none' } }
+  await poll({ list, one })
+  assert.deepEqual(calls.sort(), [p1, p2].sort())
+  assert.deepEqual(single, [3])
+  assert.deepEqual(ids.map(id => getTask(id).checks), ['fail', 'pass', 'none', 'pending'])
+  assert.equal(getTask(ids[1]).merged, 1)
+})

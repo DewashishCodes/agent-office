@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { all, get, run, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, setOrder, log, addInbox, resolveInbox, now } from './db.js'
 import { emit } from './bus.js'
 import { runClaude, tokensToday, projectTokensToday, runningCount, killRun, interruptRun, resumeRun, liveRuns } from './runner.js'
-import { ensureClone, createWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
+import { ensureClone, createWorktree, removeWorktree, mergeIntoWorktree, commitAll, changedFiles, pushBranch, createPR, prComment, setIssueStatus, prState, prStates, closePR, mergePR, restack, rebaseOnto, pushTo } from './github.js'
 import { checkTask } from './pipeline.js'
 import { integrateOrder } from './orchestrator.js'
 import { CREW_TOOLS, mcpNames, takeQueued } from './crewmcp.js'
@@ -324,11 +324,19 @@ export async function mergeTask(task_id) {
   return getTask(t.id)
 }
 
+// A finished or dropped task's worktree is dead weight under data/worktrees. Canceled runs get a moment to exit first:
+// Windows keeps files of a dying process locked.
+function dropWorktree(t, delay = 0) {
+  if (!t.worktree) return
+  setTimeout(() => removeWorktree(getProject(t.project_id), t.worktree).catch(e => console.error('worktree remove', t.id, e.message)), delay).unref?.()
+}
+
 // Shared by the PR poll and the Inbox merge action; idempotent so a merge seen by both is handled once.
 export function markMerged(task_id) {
   const t = getTask(task_id)
   if (t.merged) return
   setTask(t.id, { merged: 1 })
+  dropWorktree(t)
   if (t.pr_number) log(t.project_id, 'merge', `PR #${t.pr_number} merged: ${t.title}`, { task_id: t.id, order_id: t.order_id, link: t.pr_url })
   for (const i of all(`SELECT id FROM inbox WHERE task_id = ? AND kind = 'merge' AND status = 'open'`, t.id)) resolveInbox(i.id)
   const left = get(`SELECT COUNT(*) AS n FROM tasks WHERE order_id = ? AND merged = 0 AND status != 'canceled'`, t.order_id).n
@@ -341,11 +349,13 @@ export function markMerged(task_id) {
 // The owner drops an order: its unfinished tasks stop for good and leave the board. Done tasks keep their PRs.
 export function cancelOrder(order_id) {
   const o = getOrder(order_id)
-  const tasks = all(`SELECT id FROM tasks WHERE order_id = ? AND status != 'done'`, order_id)
+  const tasks = all(`SELECT id, project_id, worktree, pr_number FROM tasks WHERE order_id = ? AND status != 'done'`, order_id)
   const ids = new Set(tasks.map(t => t.id))
   // stopped: the runner's caller must not count it as a failed attempt or retry it.
   for (const r of liveRuns()) if (ids.has(r.task_id)) killRun(r.run_id)
   for (const t of tasks) setTask(t.id, { status: 'canceled', wait_reason: null })
+  // A task with an open PR keeps its branch and worktree; the owner may still merge or close it.
+  for (const t of tasks) if (!t.pr_number) dropWorktree(t, 10000)
   for (const i of all(`SELECT id FROM inbox WHERE status = 'open' AND (order_id = ? OR task_id IN (SELECT id FROM tasks WHERE order_id = ?))`, order_id, order_id)) resolveInbox(i.id)
   setOrder(order_id, { status: 'canceled' })
   log(o.project_id, 'order', `Order canceled: ${o.plan?.summary || o.text}`, { order_id })
@@ -360,6 +370,7 @@ export function cancelTask(task_id) {
   setTask(t.id, { status: 'canceled', wait_reason: null })
   for (const i of all(`SELECT id FROM inbox WHERE status = 'open' AND task_id = ?`, t.id)) resolveInbox(i.id)
   if (t.pr_number) closePR(getProject(t.project_id), t.pr_number).catch(e => log(t.project_id, 'error', `Closing PR #${t.pr_number} failed: ${e.message}`, { task_id: t.id }))
+  dropWorktree(t, 10000)
   for (const d of all(`SELECT id, depends_on FROM tasks WHERE project_id = ? AND status = 'planned'`, t.project_id)) {
     if (d.depends_on.includes(t.id)) setTask(d.id, { status: 'blocked', notes: `Depends on "${t.title}", which the owner canceled. Retry to go ahead without it.` })
   }
@@ -385,14 +396,23 @@ export function markOnboarded(project_id) {
 }
 
 let polling = false
-async function poll() {
+// One gh call per project however many PRs are open; list and one are swappable for tests.
+export async function poll({ list = prStates, one = prState } = {}) {
   if (polling) return
   polling = true
   try {
-    for (const t of all('SELECT * FROM tasks WHERE pr_number IS NOT NULL AND merged = 0')) {
-      try {
-        if ((await prState(getProject(t.project_id), t.pr_number)).state === 'MERGED') markMerged(t.id)
-      } catch (e) { console.error('pr poll', t.id, e.message) }
+    const open = all('SELECT * FROM tasks WHERE pr_number IS NOT NULL AND merged = 0')
+    for (const project_id of new Set(open.map(t => t.project_id))) {
+      const p = getProject(project_id)
+      let prs
+      try { prs = await list(p) } catch (e) { console.error('pr poll', p.id, e.message); continue }
+      for (const t of open.filter(t => t.project_id === project_id)) {
+        try {
+          const pr = prs.get(t.pr_number) || await one(p, t.pr_number)
+          if (pr.checks !== t.checks) setTask(t.id, { checks: pr.checks })
+          if (pr.state === 'MERGED') markMerged(t.id)
+        } catch (e) { console.error('pr poll', t.id, e.message) }
+      }
     }
     for (const p of all(`SELECT * FROM projects WHERE onboarding_status = 'pr_open' AND onboarding_pr IS NOT NULL`)) {
       try {

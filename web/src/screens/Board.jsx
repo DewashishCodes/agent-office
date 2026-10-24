@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, ghUrl, label, tokens, useAction } from '../ui.jsx'
+import TaskFacts from '../components/TaskFacts.jsx'
 
 const COLS = [['planned', 'Planned'], ['in_progress', 'In progress'], ['in_review', 'In review'], ['qa', 'QA'], ['done', 'Done'], ['blocked', 'Blocked']]
 
@@ -114,6 +115,7 @@ function TaskSheet({ id, pid, repo, onClose }) {
             {t.issue_number && <a href={ghUrl(repo, 'issues', t.issue_number)} target="_blank" rel="noreferrer">Issue #{t.issue_number}</a>}
             {t.branch && <span className="mono muted">{t.branch}</span>}
           </div>
+          <TaskFacts t={t} />
           {!['done', 'canceled'].includes(t.status) && !t.merged && (
             <div className="actions">
               {t.status === 'blocked' && <Button variant="primary" disabled={busy} onClick={retry}>Retry task</Button>}
