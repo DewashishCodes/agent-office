@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ago, orderStatus, taskStatus, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
@@ -172,7 +172,7 @@ export function PlanCard({ orderId, pid, agents }) {
       <header className="plan-head">
         <h3>{plan.summary || order.text}</h3>
         {order.hotfix ? <span className="pill warn" title="Pushes straight to the project branch, no PR, review or QA">Hotfix</span> : null}
-        <Badge status={order.status} />
+        <Badge status={orderStatus(order)} />
       </header>
       {tasks.length > 0 && (
         <p className="muted small">{done} of {tasks.length} tasks done. <a href={`#/board/${orderId}`}>Open on board</a></p>
@@ -204,7 +204,7 @@ export function PlanCard({ orderId, pid, agents }) {
                 <span className="grow">{t.title}</span>
                 <span className="pill">{t.agent || t.role}</span>
                 <span className="pill">{t.size}</span>
-                {byKey[t.key] && <Badge status={byKey[t.key].status} />}
+                {byKey[t.key] && <Badge status={taskStatus(byKey[t.key])} />}
               </summary>
               <div className="plan-detail">
                 {t.depends_on?.length > 0 && <p className="small">After: <span className="mono">{t.depends_on.join(', ')}</span></p>}
