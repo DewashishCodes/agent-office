@@ -144,12 +144,10 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
                 )
               })}
             </div>
-            <div className="presets" role="group" aria-label="Layout">
-              {PRESETS.map(([name, title, f]) => <button key={name} type="button" title={title} onClick={() => preset(f)}>{name}</button>)}
-              <button type="button" title="Default layout" aria-label="Default layout" onClick={() => setLay({ c1: null, c3: null, r2: null })}>
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
-              </button>
-            </div>
+            <More label="Layout">
+              {PRESETS.map(([name, title, f]) => <Button key={name} variant="ghost" onClick={() => preset(f)}>{name}: {title.toLowerCase()}</Button>)}
+              <Button variant="ghost" onClick={() => setLay({ c1: null, c3: null, r2: null })}>Default layout</Button>
+            </More>
           </div>
           {pane || <Empty>No agents yet.</Empty>}
         </section>
