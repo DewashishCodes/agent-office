@@ -229,6 +229,10 @@ for (const { project_id, floor, first, last } of db.prepare(`SELECT project_id, 
 // Transcripts of old runs are noise; merged work lives on GitHub.
 db.prepare("DELETE FROM run_events WHERE created_at < datetime('now', '-14 days')").run()
 
+// Settings saves the whole form, so projects that saved once kept the old wide default; they follow the new one again.
+const OLD_BASH = '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b'
+db.prepare("UPDATE projects SET settings = json_remove(settings, '$.auto_allow_bash') WHERE json_valid(settings) AND json_extract(settings, '$.auto_allow_bash') = ?").run(OLD_BASH)
+
 export const DEFAULT_SETTINGS = {
   protected_paths: ['.env*', '**/.env*', '**/*.pem', '**/*.key', '**/secrets/**', '.github/workflows/**', '**/migrations/**'],
   autonomy: 1,                 // only 1 (humans merge) is implemented in the MVP
@@ -237,7 +241,7 @@ export const DEFAULT_SETTINGS = {
   project_daily_token_budget: 20000000,
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
-  auto_allow_bash: '^(npm|pnpm|yarn|npx|node|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
+  auto_allow_bash: '^(npm (test|ci|run \\S+)\\b|npm (install|i)\\s*$|(pnpm|yarn) (test|run \\S+)\\b|(pnpm|yarn)( install)?\\s*$|node (--test\\b|(?!-)\\S+)|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 
 // Columns stored as JSON text; parsed on read by row()/rows().
