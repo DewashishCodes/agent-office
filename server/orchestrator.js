@@ -343,7 +343,11 @@ Use "verdict": "problems" and explain in notes when something does not fit.`, { 
   }
   // A chain is restacked at merge time, but a PR that already conflicts with the branch needs the owner before merging.
   const conflicts = []
-  for (const t of open) if (await prMergeable(project, t.pr_number).catch(() => null) === 'CONFLICTING') conflicts.push(`#${t.pr_number}`)
+  for (const t of open) {
+    if (await prMergeable(project, t.pr_number).catch(() => null) !== 'CONFLICTING') continue
+    conflicts.push(`#${t.pr_number}`)
+    setTask(t.id, { conflict: 1 })
+  }
   if (conflicts.length) {
     notes += `
 
