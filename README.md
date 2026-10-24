@@ -121,12 +121,12 @@ You need:
 ```bash
 git clone https://github.com/DewashishCodes/agent-office.git
 cd agent-office
-cp .env.example .env      # set OWNER_TOKEN to a long random string
 npm install
+npm run doctor            # checks Node, git, claude, gh and says how to fix what is missing
 npm run build && npm start
 ```
 
-Open **http://localhost:5190**, log in with your `OWNER_TOKEN`, and add a project. All state lives in `data/`; delete it to start over.
+The first start makes an owner token, saves it in `.env` and prints it. Open **http://localhost:5190**, log in with it, and add a project. All state lives in `data/`; delete it to start over.
 
 ## Phone access
 
