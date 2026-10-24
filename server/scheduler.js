@@ -110,6 +110,9 @@ async function taskPrompt(t, a) {
     t.files.length && `## Files you are expected to touch\n\n${t.files.join('\n')}`,
     siblings.length && `## Other tasks of this order (not yours now, do not build them)\n\n${siblings.map(s => `- ${s.title}${s.files.length ? ` (${s.files.join(', ')})` : ''}`).join('\n')}`,
     deps.length && `## Already merged into your branch\n\n${deps.map(d => `- ${d.title} (${d.branch})${d.result ? `\n\n  What its agent reported:\n\n${d.result.slice(0, 2000).replace(/^/gm, '  > ')}` : ''}`).join('\n\n')}`,
+    !t.attempts && t.notes && `## Notes for this task
+
+${t.notes}`,
     t.attempts && t.notes && `## Previous attempt failed (attempt ${t.attempts + 1} now)\n\nYour earlier work is already on this branch. Fix these points:\n\n${t.notes}`,
   ].filter(Boolean).join('\n\n')
 }
