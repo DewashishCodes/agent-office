@@ -101,10 +101,15 @@ function answer(run_id, request_id, allow, { message, remember } = {}) {
   log(add.project.id, 'settings', `"${add.prefix}" no longer asks for permission`)
 }
 
-// A retry goes ahead without dependencies the owner canceled; they would never finish.
-function retryTask(id) {
-  const deps = getTask(id).depends_on.filter(d => getTask(d)?.status !== 'canceled')
-  const t = setTask(id, { attempts: 0, notes: '', status: 'planned', depends_on: deps })
+// A retry goes ahead without dependencies the owner canceled; they would never finish. A note from the owner keeps
+// the last failure with it, so the agent sees both what went wrong and how the owner wants it fixed.
+function retryTask(id, note) {
+  const old = getTask(id)
+  const deps = old.depends_on.filter(d => getTask(d)?.status !== 'canceled')
+  const notes = note ? `${old.notes ? `${old.notes}
+
+` : ''}From the owner: ${note}` : ''
+  const t = setTask(id, { attempts: 0, notes, status: 'planned', depends_on: deps })
   kick()
   return t
 }
@@ -435,7 +440,9 @@ app.post('/api/tasks/:id/cancel', (req, res) => {
 
 app.post('/api/tasks/:id/retry', (req, res) => {
   const t = found(getTask(int(req.params.id)), 'task')
-  res.json(retryTask(t.id))
+  const note = req.body?.note
+  if (note !== undefined && typeof note !== 'string') throw fail(400, 'note must be text')
+  res.json(retryTask(t.id, note?.trim().slice(0, 4000)))
 })
 
 // Wall: one request to boot the screen, SSE after that.
@@ -757,7 +764,7 @@ app.post('/api/inbox/:id/action', async (req, res) => {
       background(item.project_id, chat(item.project_id, `Answer to "${item.title}": ${text}`, floor, 'user', chatFor(item.project_id, floor, item.order_id)))
       status = 202
     }
-  } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'))
+  } else if (key === 'failure:retry') retryTask(found(item.task_id, 'task'), typeof text === 'string' ? text.trim().slice(0, 4000) : undefined)
   else throw fail(400, `unknown action ${action} for ${item.kind}`)
   resolveInbox(item.id)
   res.status(status).json({ ok: true })
