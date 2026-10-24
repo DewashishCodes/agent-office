@@ -2,7 +2,7 @@ import express from 'express'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join, resolve, dirname, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
-import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now, DATA_DIR } from './db.js'
 import { teeConsole } from './logfile.js'
 import { bus, emit } from './bus.js'
@@ -164,6 +164,13 @@ app.use('/api', (req, res, next) => {
 const booted = Date.now(), unclean = get(`SELECT value FROM kv WHERE key = 'running'`)?.value === '1'
 // restarted: an unclean restart under a minute ago, for a one-line hint in the UI.
 app.get('/api/health', health)
+
+// A consistent copy of the whole database: VACUUM INTO snapshots it even while runs write, then it streams and goes.
+app.get('/api/backup', (req, res) => {
+  const file = join(DATA_DIR, `backup-${Date.now()}.db`)
+  run('VACUUM INTO ?', file)
+  res.download(file, `agent-office-${new Date().toLocaleDateString('sv')}.db`, () => rmSync(file, { force: true }))
+})
 
 app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
 app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
