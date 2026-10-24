@@ -158,7 +158,7 @@ export function RunItem({ r }) {
         <summary>
           <Badge status={r.status} />
           <span className="pill">{r.kind}</span>
-          <span className="grow mono small">{r.status === 'running' ? r.last_event : label(r.status)}</span>
+          <span className="grow mono small">{r.status === 'running' ? r.last_event : ''}</span>
           <span className="muted small">{tokens(r.input_tokens + r.output_tokens)} tok, ${Number(r.cost_usd || 0).toFixed(2)}, {ago(r.started_at)}</span>
         </summary>
         <p className="pre small">{r.result_text || r.last_event || 'No output yet'}</p>
