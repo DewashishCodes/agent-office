@@ -105,6 +105,13 @@ export function ago(s) {
   return `${Math.floor(sec / 86400)}d ago`
 }
 
+// Screens reached inside the app can go back; a fresh tab or a pasted link has nowhere to go back to but Home.
+let moves = 0
+addEventListener('hashchange', () => { moves++ })
+export function BackLink({ children = 'Back' }) {
+  return <a href="#/home" className="back" onClick={e => { if (moves) { e.preventDefault(); history.back() } }}>{children}</a>
+}
+
 const at = s => new Date(s.replace(' ', 'T') + 'Z')
 
 // A relative time that shows the full local timestamp on hover.
