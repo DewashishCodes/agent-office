@@ -109,3 +109,15 @@ test('poll: one PR list call per project, checks stored, merges marked', async (
   assert.deepEqual(ids.map(id => getTask(id).checks), ['fail', 'pass', 'none', 'pending'])
   assert.equal(getTask(ids[1]).merged, 1)
 })
+
+test('recover: an interrupted task keeps its agent session to resume', async () => {
+  const a = insert('agents', { project_id, name: 'Resumer', role: 'backend', owned_paths: ['api/**'] })
+  const t = task({ status: 'in_progress', agent_id: a })
+  insert('runs', { project_id, task_id: t, agent_id: a, kind: 'task', session_id: 'old-sess' })
+  insert('runs', { project_id, task_id: t, agent_id: a, kind: 'task', session_id: 'sess-cut', status: 'running' })
+  const other = task({ status: 'in_progress', agent_id: a })
+  recover()
+  assert.equal(getTask(t).resume_session, 'sess-cut')
+  assert.equal(getTask(t).status, 'planned')
+  assert.equal(getTask(other).resume_session, null)
+})
