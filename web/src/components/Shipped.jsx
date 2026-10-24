@@ -1,5 +1,5 @@
 import { on, useData } from '../api.js'
-import { Empty, ErrorText, ago, tokens } from '../ui.jsx'
+import { Ago, Empty, ErrorText, tokens } from '../ui.jsx'
 
 // Monday 00:00 local of the week a timestamp falls in. Server times are UTC without a zone.
 const weekOf = s => {
@@ -37,7 +37,7 @@ export default function Shipped({ pid }) {
             </div>
             <div className="row wrap small muted">
               {r.agent_name && <span>{r.agent_name}</span>}
-              <span title={r.merged_at}>{ago(r.merged_at)}</span>
+              <Ago at={r.merged_at} />
               <span>${r.cost_usd.toFixed(2)}, {tokens(r.tokens)} tok</span>
               {r.order_title && <a className="clip" href={`#/board/${r.order_id}`}>{r.order_title}</a>}
             </div>
