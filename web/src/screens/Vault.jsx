@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
+import { Ago, Button, ConfirmButton, Empty, ErrorText, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 
 const TABS = [['all', 'Everything'], ['note', 'Notes'], ['decision', 'Decisions'], ['file', 'Files'], ['docs', 'Repo docs']]
@@ -105,7 +105,7 @@ function Entry({ i, open, onToggle }) {
       <button type="button" className="entry-head" onClick={onToggle} aria-expanded={open}>
         <span className="pill">{KIND[i.kind]}</span>
         <span className="grow title clip">{i.title}</span>
-        <span className="muted small">{i.author_agent_id ? 'by an agent, ' : ''}{ago(i.updated_at)}</span>
+        <span className="muted small">{i.author_agent_id ? 'by an agent, ' : ''}<Ago at={i.updated_at} /></span>
       </button>
       {!open && (i.snippet || i.size) ? <p className="muted small clip">{i.snippet || `${i.mime || 'file'}, ${size(i.size)}`}</p> : null}
       {i.tags.length > 0 && <p className="row wrap">{i.tags.map(t => <span key={t} className="pill">{t}</span>)}</p>}
