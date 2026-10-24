@@ -3,6 +3,7 @@ import { api, on, useData } from '../api.js'
 import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '../ui.jsx'
 import Working from '../components/Working.jsx'
 import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
+import Permission from '../components/Permission.jsx'
 
 export default function Inbox({ pid }) {
   const [all, setAll] = useState(false)
@@ -35,6 +36,13 @@ async function mergeOrder(id) {
   catch (e) { setOrderMerge(id, { error: e.message }) }
 }
 
+// Inbox items carry the request input as JSON (cut at 1500 chars); a cut body still shows, as text.
+function permissionReq(i) {
+  let input
+  try { input = JSON.parse(i.body) } catch { return { tool_name: '', input: i.body, summary: i.title } }
+  return { tool_name: input?.command ? 'Bash' : '', input, summary: i.title.replace(/^.*? asks to run: /, '') }
+}
+
 const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
 
 export function Item({ i }) {
@@ -56,7 +64,7 @@ export function Item({ i }) {
         {i.link && <a className="small" href={i.link} target="_blank" rel="noreferrer">Open on GitHub</a>}
       </div>
       <h3>{i.title}</h3>
-      {i.body && <p className="pre small">{i.body}</p>}
+      {i.body && !(open && i.kind === 'permission') && <p className="pre small">{i.body}</p>}
       {open && i.kind === 'plan' && !revising && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('approve')}>Approve</Button>
@@ -92,11 +100,7 @@ export function Item({ i }) {
       {open && i.kind === 'merge' && orderMerge?.busy && <Working set="git-pr" text="Merging every PR of this order, one at a time. This can take a few minutes." />}
       {open && i.kind === 'merge' && <ErrorText error={orderMerge?.error} />}
       {open && i.kind === 'permission' && (
-        <div className="actions">
-          <Button variant="primary" disabled={busy} onClick={() => act('allow')}>Allow</Button>
-          <Button disabled={busy} onClick={() => act('deny')}>Deny</Button>
-          <a className="btn ghost" href="#/wall">See on Wall</a>
-        </div>
+        <Permission req={permissionReq(i)} onAnswer={(allow, remember) => api(`/inbox/${i.id}/action`, { method: 'POST', body: { action: allow ? 'allow' : 'deny', remember } })} />
       )}
       {open && i.kind === 'failure' && (
         <div className="actions">
