@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -18,7 +18,29 @@ const CELL = 0.6
 export default function Terminal({ run, drive = false, interactive = false, className = '' }) {
   if (!run) return <div className={`terminal empty-t ${className}`}>No runs yet</div>
   if (!run.terminal) return <Transcript runId={run.id} tail={drive ? 500 : 40} className={`${className} ${drive ? 'tall' : ''}`} />
-  return <Live key={run.id} id={run.id} src={`/api/runs/${run.id}/pty`} drive={drive} interactive={interactive} className={className} />
+  return <Switchable key={run.id} run={run} drive={drive} interactive={interactive} className={className} />
+}
+
+// About 80 columns at a readable font; narrower, the TUI's redraws turn to noise and text reads better.
+const NARROW_PX = 80 * 13 * CELL
+
+// A terminal run as the live TUI or as text from its run events. Text by default when the run is over, on a phone,
+// or in a narrow pane; the owner can flip it, and taking over always shows the terminal.
+function Switchable({ run, drive, interactive, className }) {
+  const box = useRef()
+  const [text, setText] = useState(() => run.status !== 'running' || !matchMedia('(min-width: 900px)').matches)
+  const chosen = useRef(false)
+  useEffect(() => { if (!chosen.current && box.current?.clientWidth < NARROW_PX) setText(true) }, [])
+  const showText = text && !interactive
+  const flip = () => { chosen.current = true; setText(t => !t) }
+  return (
+    <div className={`term-switch ${className}`} ref={box}>
+      {!interactive && <button type="button" className="btn ghost small term-flip" aria-pressed={showText} onClick={flip}>Text</button>}
+      {showText
+        ? <Transcript runId={run.id} tail={drive ? 500 : 40} className={drive ? 'tall' : ''} />
+        : <Live id={run.id} src={`/api/runs/${run.id}/pty`} drive={drive} interactive={interactive} className={className} />}
+    </div>
+  )
 }
 
 // A service's output (dev server, watcher): the same terminal, read only, never resizing the process.

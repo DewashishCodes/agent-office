@@ -18,10 +18,11 @@ const ICONS = {
   command: 'M4 5h16v11H9l-5 4z',
   wall: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6',
   board: 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v13h-4z',
+  inbox: 'M4 13l2.5-8h11l2.5 8v6H4zM4 13h5l1 2h4l1-2h5',
 }
-const TABS = [['home', 'Home'], ['command', 'Command'], ['wall', 'Agents'], ['board', 'Board']]
+const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['wall', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { inbox: 'home', vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
+const TAB_OF = { vault: 'home', team: 'wall', agent: 'wall', onboarding: 'home' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }
 function parseHash() {
@@ -31,16 +32,17 @@ function parseHash() {
 
 export default function App() {
   const [authed, setAuthed] = useState(null)
+  const [restarted, setRestarted] = useState(false)
   useEffect(() => {
     setAuthHandler(setAuthed)
-    api('/me').then(() => setAuthed(true), () => setAuthed(false))
+    api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, () => setAuthed(false))
   }, [])
   if (authed === null) return <div className="splash">Loading</div>
   if (!authed) return <Login onDone={() => setAuthed(true)} />
-  return <Shell />
+  return <Shell restarted={restarted} />
 }
 
-function Shell() {
+function Shell({ restarted }) {
   const [route, setRoute] = useState(parseHash)
   // Desktop sidebar: an icon rail unless the owner opens it; the choice sticks.
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem('crew.nav') === 'open' } catch { return false } })
@@ -104,7 +106,7 @@ function Shell() {
             <a key={id} href={`#/${id}`} className={`tab ${id}-tab`} title={name} aria-current={tab === id ? 'page' : undefined}>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={ICONS[id]} /></svg>
               <span className="tab-name">{name}</span>
-              {id === 'home' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
+              {id === 'inbox' && count > 0 && <span className="count" aria-label={`${count} open`}>{count}</span>}
             </a>
           ))}
         </nav>
@@ -114,6 +116,7 @@ function Shell() {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
+        {restarted && <p className="banner" role="status">The crew server just came back from a crash, power loss or sleep. Interrupted tasks went back in the queue. See Keep it running in the README.</p>}
         {view !== 'onboarding' && ['interviewing', 'proposed'].includes(p?.onboarding_status) && (
           <a className="banner onboard-banner" href="#/onboarding">{p.onboarding_status === 'proposed' ? 'Your office proposal is ready. Review and approve it.' : 'Onboarding is in progress. Answer the questions to set up your office.'}</a>
         )}
@@ -149,10 +152,8 @@ function Header({ projects, project, detail, onPick, reload }) {
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
       </button>
-      {!project.paused && (
-        <ConfirmButton small variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all</ConfirmButton>
-      )}
       <More label="Menu">
+        {!project.paused && <ConfirmButton variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all agents</ConfirmButton>}
         <a className="btn ghost" href="#/projects">Projects</a>
         <Button variant="ghost" onClick={logout}>Log out</Button>
       </More>

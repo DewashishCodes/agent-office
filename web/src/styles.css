@@ -149,7 +149,7 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
   background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
-.project-pick { width: auto; max-width: 46vw; font-weight: 600; border-color: transparent; background: transparent; padding-left: 4px; }
+.project-pick { width: auto; max-width: min(46vw, 280px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-weight: 600; border-color: transparent; background: transparent; padding-left: 4px; }
 .stats { flex: 1; display: flex; gap: 10px; justify-content: flex-end; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .stats { align-items: center; }
 .cost { font-weight: 650; color: var(--text); }
@@ -161,7 +161,8 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
 .theme-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
 .theme-toggle:hover { color: var(--accent); background: var(--surface-2); }
 .theme-toggle svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-@media (max-width: 420px) { .tok-today { display: none; } }
+@media (max-width: 899px) { .tok-today { display: none; } }
+@media (max-width: 479px) { .stats .gauge { display: none; } }
 .menu {
   position: absolute; right: 0; top: calc(100% + 4px); min-width: 230px;
   display: flex; flex-direction: column; gap: 4px; padding: 8px;
@@ -414,3 +415,14 @@ h1 .count { vertical-align: middle; }
 .diff .d-meta { color: var(--muted); }
 .permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .permission details pre { max-height: 240px; overflow: auto; }
+.badge.g-wait { background: var(--accent-soft); color: var(--accent); }
+.badge.g-work { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.badge.g-check { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.badge.g-merge { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.badge.g-shipped { background: var(--ok); color: var(--surface); }
+.badge.g-stuck { background: var(--err-soft); color: var(--err); }
+.badge.g-canceled { background: var(--surface-2); color: var(--muted); }
+.badge[class*=" g-"] { text-transform: none; }
+.term-switch { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.term-flip { position: absolute; top: 4px; right: 4px; z-index: 2; }
+.term-flip[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }

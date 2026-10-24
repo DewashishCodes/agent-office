@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, on, useData, useEvents } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, orderStatus, useAction } from '../ui.jsx'
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from './Wall.jsx'
+import { PlanCard } from './Command.jsx'
 import Office, { CrewThread, light } from '../components/Office.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
@@ -119,9 +120,10 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
   const preset = f => { const r = box.current.getBoundingClientRect(); setLay({ c1: null, c3: null, r2: null, ...f(r.width, r.height) }) }
 
   return (
-    <section className="hq" ref={box} style={wide ? layStyle : undefined}>
+    <section className={`hq ${items?.length ? 'has-needs' : ''}`} ref={box} style={wide ? layStyle : undefined}>
       <section className="hq-space" aria-label="Agent space">
         <ErrorText error={wallError} />
+        {!wide && items?.length > 0 && <NeedsStrip items={items} onOpen={() => setSheet('needs')} />}
         {wall && <FloorBar open={open} agents={everyone} floor={floor.key} onPick={k => { setFloor(k); setSelected(null) }}
           onAdd={() => setSheet('floor')} canAdd={open.length < (floors?.length || 0)} />}
         {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected} floor={floor}
@@ -142,12 +144,10 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
                 )
               })}
             </div>
-            <div className="presets" role="group" aria-label="Layout">
-              {PRESETS.map(([name, title, f]) => <button key={name} type="button" title={title} onClick={() => preset(f)}>{name}</button>)}
-              <button type="button" title="Default layout" aria-label="Default layout" onClick={() => setLay({ c1: null, c3: null, r2: null })}>
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" /></svg>
-              </button>
-            </div>
+            <More label="Layout">
+              {PRESETS.map(([name, title, f]) => <Button key={name} variant="ghost" onClick={() => preset(f)}>{name}: {title.toLowerCase()}</Button>)}
+              <Button variant="ghost" onClick={() => setLay({ c1: null, c3: null, r2: null })}>Default layout</Button>
+            </More>
           </div>
           {pane || <Empty>No agents yet.</Empty>}
         </section>
@@ -170,7 +170,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       </section>
 
       <section className="hq-orders" aria-label="Orders">
-        <Orders pid={pid} floor={floor} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
+        <Orders pid={pid} floor={floor} agents={agents} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
           support={agents.find(a => a.role === 'support')} services={services} onServices={() => setSheet('services')} />
       </section>
 
@@ -185,12 +185,26 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
           <div className="stack">
             <div className="row"><span className="grow" /><PushButton /></div>
             {items?.length ? <ul className="list">{items.map(i => <Item key={i.id} i={i} />)}</ul> : <Empty>All clear. Nothing needs you right now.</Empty>}
-            <a className="small" href="#/inbox" onClick={close}>Inbox history</a>
+            <a className="small" href="#/inbox" onClick={close}>Open Needs you</a>
           </div>
         </Sheet>
       )}
       {quick && <QuickTask pid={pid} agent={quick} onClose={() => setQuick(null)} />}
     </section>
+  )
+}
+
+const ACT = { plan: 'Review plan', merge: 'Review merge', permission: 'Answer', question: 'Answer', failure: 'See failure' }
+
+// Phones: what needs the owner sits above the room instead of a scroll away.
+function NeedsStrip({ items, onOpen }) {
+  const first = items[0]
+  return (
+    <div className="needs-strip" role="status">
+      <span className="count">{items.length}</span>
+      <span className="clip grow">{first.title}</span>
+      <Button small variant="primary" onClick={onOpen}>{items.length > 1 ? 'Open all' : ACT[first.kind] || 'Open'}</Button>
+    </div>
   )
 }
 
@@ -228,7 +242,7 @@ function Kanban({ tasks, orders }) {
 }
 
 // The order section has two modes: orders for the build team, and Support for chores (no plan, no PR).
-function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, onServices }) {
+function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices }) {
   const [mode, setMode] = useState(() => { try { return localStorage.getItem('crew.bar') === 'support' ? 'support' : 'order' } catch { return 'order' } })
   const pickMode = m => { setMode(m); setSent(false); try { localStorage.setItem('crew.bar', m) } catch {} }
   const [text, setText] = useState('')
@@ -244,7 +258,6 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
       setText('')
     })
   }
-  const approve = id => run(() => api(`/orders/${id}/approve`, { method: 'POST', body: {} }))
   const cancel = id => run(() => api(`/orders/${id}/cancel`, { method: 'POST' }))
   return (
     <>
@@ -269,18 +282,14 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
             return (
               <li key={o.id} className="order-line">
                 <a className="clip" href={`#/board/${o.id}`}>{o.plan?.summary || o.text}</a>
-                {o.status === 'awaiting_approval' ? (
-                  <span className="row">
-                    <a className="small" href="#/command">Plan</a>
-                    <Button small variant="primary" disabled={busy} onClick={() => approve(o.id)}>Approve</Button>
-                  </span>
-                ) : total > 0
+                {o.status === 'awaiting_approval' ? <Badge status="plan">Plan ready</Badge> : total > 0
                   ? <span className="progress" title={`${done} of ${total} tasks done`}><span style={{ width: `${Math.round((done / total) * 100)}%` }} /></span>
-                  : <Badge status={o.status} />}
+                  : <Badge status={orderStatus(o)} />}
                 <More label={`Actions for ${o.plan?.summary || o.text}`}>
                   <a className="btn ghost" href={`#/board/${o.id}`}>Open on the board</a>
                   <ConfirmButton variant="ghost" confirm="Stop its tasks and cancel" disabled={busy} onConfirm={() => cancel(o.id)}>Cancel order</ConfirmButton>
                 </More>
+                {o.status === 'awaiting_approval' && <PlanCard orderId={o.id} pid={pid} agents={agents} />}
               </li>
             )
           }) : <li className="lane-empty">No open orders</li>}
@@ -292,7 +301,7 @@ function Orders({ pid, floor, lead, orders, needs, onNeeds, support, services, o
           placeholder={mode === 'support' ? 'Ask Support: start the server, run the tests, query the db...' : `Give the ${floor.name} floor an order...`} />
         <Button type="submit" variant="primary" disabled={busy || !text.trim()}>{mode === 'support' ? 'Ask' : 'Send'}</Button>
       </form>
-      {sent && mode === 'order' && <p className="small muted">Sent. The plan comes back on <a href="#/command">Command</a>.</p>}
+      {sent && mode === 'order' && <p className="small muted">Sent. The plan shows up here when the lead has it, and on <a href="#/command">Command</a>.</p>}
       <ErrorText error={error} />
     </>
   )

@@ -8,9 +8,26 @@ export function StatusDot({ status }) {
   return <span className={`dot s-${status}`} title={status}><span className="sr-only">{status}</span></span>
 }
 
-export function Badge({ status, children }) {
-  return <span className={`badge s-${status}`}>{children || label(status)}</span>
+// Six owner words for the many internal statuses; the API keeps its own. Others (planned, ok) show as they are.
+const OWNER = {
+  wait: ['Waiting for you', 'awaiting_approval plan question permission'],
+  work: ['Working', 'in_progress running working planning'],
+  check: ['Being checked', 'in_review qa'],
+  merge: ['Ready to merge', 'done ready_to_merge merge'],
+  shipped: ['Shipped', 'merged'],
+  stuck: ['Stuck', 'blocked error failed failure killed rejected'],
+  canceled: ['Canceled', 'canceled'],
 }
+const GROUP = Object.fromEntries(Object.entries(OWNER).flatMap(([g, [, s]]) => s.split(' ').map(x => [x, g])))
+
+export function Badge({ status, children }) {
+  const g = GROUP[status]
+  return <span className={`badge s-${status}${g ? ` g-${g}` : ''}`}>{children || (g ? OWNER[g][0] : label(status))}</span>
+}
+
+// A merged task, or an order whose PRs all merged, reads Shipped rather than done.
+export const taskStatus = t => (t.merged ? 'merged' : t.status)
+export const orderStatus = o => (o.status === 'done' ? 'merged' : o.status)
 
 // Native <dialog> gives us focus trapping, Esc to close and the backdrop for free.
 export function Sheet({ title, onClose, children }) {

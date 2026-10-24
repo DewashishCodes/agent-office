@@ -190,7 +190,7 @@
 
 /* Phone: the room first, then orders, kanban (swipe), config. A desk opens its terminal in a sheet. */
 @media (max-width: 899px) {
-  .room { --s: .6; height: 62vh; min-height: 380px; }
+  .room { --s: .6; flex: none; height: 62vh; min-height: 380px; }
   .floor-desks { gap: 22px 10px; padding: 62px 8px 18px; }
   .hq-orders { order: 1; }
   .hq-kanban { order: 2; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
@@ -252,9 +252,11 @@
   .s-r2::after { width: 40px; height: 3px; }
 }
 
-/* Agent switcher above the terminal, layout presets at its end. */
+/* Agent switcher above the terminal, the layout menu at its end. */
 .term-strip { display: flex; align-items: center; gap: 8px; }
 .strip-tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* The right edge fades so a clipped floor or agent reads as "scroll for more". */
+.strip-tabs { padding-right: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 .strip-tab {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
   font: 10px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
@@ -263,13 +265,6 @@
 .strip-tab:hover { color: var(--text); }
 .strip-tab[aria-selected="true"] { color: var(--accent-text); background: var(--accent); }
 .strip-tab .light { box-shadow: none; }
-.presets { flex: 0 0 auto; display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--surface-2); }
-.presets button {
-  display: inline-grid; place-items: center; min-height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 6px; cursor: pointer;
-  font: 10px/1 var(--pixel); text-transform: uppercase; color: var(--muted); background: none;
-}
-.presets button:hover { color: var(--accent); background: var(--surface); }
-.presets svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Needs you: anything waiting on the owner pulses until answered. */
 @keyframes needs { 0% { box-shadow: 0 0 0 0 rgb(255 107 94 / .65); } 70%, 100% { box-shadow: 0 0 0 9px rgb(255 107 94 / 0); } }
@@ -307,3 +302,8 @@
 .room .sign { color: var(--floor, #d97757); border-color: var(--floor, #d97757); }
 .chat-floors { position: sticky; top: 49px; z-index: 3; padding: 6px 0; background: var(--bg); }
 .floor-bar .strip-tabs { flex: 0 1 auto; }
+.needs-strip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); min-width: 0; }
+@media (max-width: 899px) {
+  .hq.has-needs .room { height: 40vh; min-height: 240px; }
+}
+.order-line > .plan { grid-column: 1 / -1; margin-top: 6px; }

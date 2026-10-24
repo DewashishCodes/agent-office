@@ -1,8 +1,8 @@
 import express from 'express'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join, resolve, dirname, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
-import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync } from 'node:fs'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
@@ -19,9 +19,16 @@ import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, fileP
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
 
-if (!process.env.OWNER_TOKEN) {
-  console.error('OWNER_TOKEN is not set. Put OWNER_TOKEN=<long random string> in .env and restart.')
-  process.exit(1)
+// First boot (or the example value): make the owner token, keep it in .env and say it once, instead of refusing to start.
+if (!process.env.OWNER_TOKEN || process.env.OWNER_TOKEN === 'change-me-to-a-long-random-string') {
+  const env = join(import.meta.dirname, '..', '.env')
+  const token = randomBytes(24).toString('base64url')
+  const old = existsSync(env) ? readFileSync(env, 'utf8') : ''
+  writeFileSync(env, /^OWNER_TOKEN=.*$/m.test(old)
+    ? old.replace(/^OWNER_TOKEN=.*$/m, `OWNER_TOKEN=${token}`)
+    : `${old}${old && !old.endsWith('\n') ? '\n' : ''}OWNER_TOKEN=${token}\n`)
+  process.env.OWNER_TOKEN = token
+  console.log(`\nNo owner token was set, so one was made and saved in .env. Log in with:\n\n  ${token}\n\nat http://localhost:${process.env.PORT || 5190} (from your phone, see Phone access in the README).\n`)
 }
 
 const sha = s => createHash('sha256').update(s).digest()
@@ -139,7 +146,10 @@ app.use('/api', (req, res, next) => {
   next()
 })
 
-app.get('/api/me', (req, res) => res.json({ ok: true }))
+// running stays 1 in kv until a clean exit, so the next boot knows the last one crashed, lost power or slept.
+const booted = Date.now(), unclean = get(`SELECT value FROM kv WHERE key = 'running'`)?.value === '1'
+// restarted: an unclean restart under a minute ago, for a one-line hint in the UI.
+app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
 app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
 
 // Projects
@@ -807,7 +817,9 @@ if (import.meta.main) {
     }
     ensureSupport()
     recoverServices()
-    process.on('exit', stopAllServices)
+    run(`INSERT OR REPLACE INTO kv (key, value) VALUES ('running', '1')`)
+    // A crash exits non-zero and still fires 'exit'; only a clean stop clears the flag.
+    process.on('exit', code => { stopAllServices(); if (code === 0) run(`INSERT OR REPLACE INTO kv (key, value) VALUES ('running', '0')`) })
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0))
     initNotify()
     start()

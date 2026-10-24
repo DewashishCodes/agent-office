@@ -5,12 +5,13 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env server/index.js",
-    "dev:server": "node --env-file=.env --watch server/index.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev:server": "node --env-file-if-exists=.env --watch server/index.js",
     "dev:web": "vite",
     "build": "vite build",
     "test": "node --test \"test/*.test.js\"",
-    "smoke:web": "node scripts/smoke-web.mjs"
+    "smoke:web": "node scripts/smoke-web.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.15",

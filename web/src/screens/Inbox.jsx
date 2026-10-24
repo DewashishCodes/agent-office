@@ -6,20 +6,26 @@ import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
 
 export default function Inbox({ pid }) {
-  const [all, setAll] = useState(false)
-  const [items, , error] = useData(`/projects/${pid}/inbox${all ? '' : '?status=open'}`, on(pid, 'inbox'))
+  const [history, setHistory] = useState(false)
+  const [items, , error] = useData(`/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  const [done, , doneError] = useData(history && `/projects/${pid}/inbox?status=done`, on(pid, 'inbox'))
   return (
     <section className="page stack">
       <div className="row wrap">
-        <h1 className="grow">Inbox history</h1>
+        <h1 className="grow">Needs you</h1>
         <PushButton />
       </div>
-      <label className="check">
-        <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> Show resolved items
-      </label>
       <ErrorText error={error} />
-      {items?.length === 0 && <Empty>{all ? 'Nothing here yet.' : 'All clear. Nothing needs you right now.'}</Empty>}
+      {items?.length === 0 && <Empty>All clear. Nothing needs you right now.</Empty>}
       <ul className="list">{items?.map(i => <Item key={i.id} i={i} />)}</ul>
+      <Button variant="ghost" aria-expanded={history} onClick={() => setHistory(h => !h)}>{history ? 'Hide history' : 'Show history'}</Button>
+      {history && (
+        <>
+          <ErrorText error={doneError} />
+          {done?.length === 0 && <Empty>Nothing resolved yet.</Empty>}
+          <ul className="list">{done?.map(i => <Item key={i.id} i={i} />)}</ul>
+        </>
+      )}
     </section>
   )
 }

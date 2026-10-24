@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, useData } from '../api.js'
-import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
+import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, orderStatus, tokens, useAction } from '../ui.jsx'
 import Terminal from '../components/Terminal.jsx'
 import { CrewThread } from '../components/Office.jsx'
 import '../office.css'
@@ -49,7 +49,7 @@ export default function Wall({ pid }) {
                 return (
                   <li key={o.id} className="row wrap">
                     <a className="grow" href={`#/board/${o.id}`}>#{o.id} {o.plan?.summary || o.text}</a>
-                    <Badge status={o.status} />
+                    <Badge status={orderStatus(o)} />
                     {total > 0 && <span className="muted small">{o.counts.done || 0}/{total} done</span>}
                   </li>
                 )
