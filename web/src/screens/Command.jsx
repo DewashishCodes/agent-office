@@ -144,7 +144,7 @@ function ChatList({ chats, current, onPick }) {
   )
 }
 
-function PlanCard({ orderId, pid, agents }) {
+export function PlanCard({ orderId, pid, agents }) {
   const [order, reload, error] = useData(`/orders/${orderId}`,
     ev => ev.project_id === pid && ((ev.type === 'order' && ev.data.id === orderId) || (ev.type === 'task' && ev.data.order_id === orderId)))
   const [editing, setEditing] = useState(null)
