@@ -4,6 +4,7 @@ import { Badge, Button, ConfirmButton, Empty, ErrorText, ago, useAction } from '
 import Working from '../components/Working.jsx'
 import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
+import RetryNote from '../components/RetryNote.jsx'
 
 export default function Inbox({ pid }) {
   const [history, setHistory] = useState(false)
@@ -111,6 +112,7 @@ export function Item({ i }) {
       {open && i.kind === 'failure' && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('retry')}>Retry</Button>
+          {i.task_id && <RetryNote onRetry={note => api(`/inbox/${i.id}/action`, { method: 'POST', body: { action: 'retry', text: note } })} />}
           <Button variant="ghost" disabled={busy} onClick={() => act('dismiss')}>Dismiss</Button>
         </div>
       )}
