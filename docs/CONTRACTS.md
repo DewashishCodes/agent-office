@@ -169,7 +169,7 @@ Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: 
 | GET | /api/projects/:id/messages | last 200, oldest first |
 | POST | /api/projects/:id/messages `{text}` | `orchestrator.chat` (202) |
 | GET | /api/projects/:id/orders | newest first |
-| GET | /api/orders/:id | order + its tasks |
+| GET | /api/orders/:id | order + its tasks + `cost_usd` (sum of its task runs) + `estimates` per size (`rules.estimates`, only while awaiting approval) |
 | POST | /api/orders/:id/approve `{tasks?}` | `approvePlan` |
 | POST | /api/orders/:id/revise `{feedback}` | `revisePlan` (202) |
 | POST | /api/orders/:id/reject | `rejectPlan` |
@@ -257,7 +257,7 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
 - `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`. `inbox`: `run_id`, `ref`.
-- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex).
+- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget).
 
 ### Routes
 | Method | Path | Does |
