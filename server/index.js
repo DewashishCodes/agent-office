@@ -1,8 +1,8 @@
 import express from 'express'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join, resolve, dirname, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
-import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync } from 'node:fs'
+import { existsSync, openSync, fstatSync, readSync, closeSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { all, get, run, insert, update, getProject, getAgent, getTask, getOrder, activeAgents, setTask, setAgent, log, resolveInbox, now } from './db.js'
 import { bus, emit } from './bus.js'
 import { TEMPLATES, FLOORS, FLOOR_TEAMS, floorOf, template, createAgent, openFloor } from './roster.js'
@@ -19,9 +19,16 @@ import { listVault, getEntry, addEntry, updateEntry, deleteEntry, addFile, fileP
 import { askSupport, ensureSupport, supportAgent } from './support.js'
 import { listServices, stopService, restartService, removeService, watchService, serviceTail, recoverServices, stopAllServices } from './services.js'
 
-if (!process.env.OWNER_TOKEN) {
-  console.error('OWNER_TOKEN is not set. Put OWNER_TOKEN=<long random string> in .env and restart.')
-  process.exit(1)
+// First boot (or the example value): make the owner token, keep it in .env and say it once, instead of refusing to start.
+if (!process.env.OWNER_TOKEN || process.env.OWNER_TOKEN === 'change-me-to-a-long-random-string') {
+  const env = join(import.meta.dirname, '..', '.env')
+  const token = randomBytes(24).toString('base64url')
+  const old = existsSync(env) ? readFileSync(env, 'utf8') : ''
+  writeFileSync(env, /^OWNER_TOKEN=.*$/m.test(old)
+    ? old.replace(/^OWNER_TOKEN=.*$/m, `OWNER_TOKEN=${token}`)
+    : `${old}${old && !old.endsWith('\n') ? '\n' : ''}OWNER_TOKEN=${token}\n`)
+  process.env.OWNER_TOKEN = token
+  console.log(`\nNo owner token was set, so one was made and saved in .env. Log in with:\n\n  ${token}\n\nat http://localhost:${process.env.PORT || 5190} (from your phone, see Phone access in the README).\n`)
 }
 
 const sha = s => createHash('sha256').update(s).digest()
