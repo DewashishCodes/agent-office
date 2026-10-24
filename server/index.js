@@ -146,7 +146,10 @@ app.use('/api', (req, res, next) => {
   next()
 })
 
-app.get('/api/me', (req, res) => res.json({ ok: true }))
+// running stays 1 in kv until a clean exit, so the next boot knows the last one crashed, lost power or slept.
+const booted = Date.now(), unclean = get(`SELECT value FROM kv WHERE key = 'running'`)?.value === '1'
+// restarted: an unclean restart under a minute ago, for a one-line hint in the UI.
+app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
 app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
 
 // Projects
@@ -814,7 +817,9 @@ if (import.meta.main) {
     }
     ensureSupport()
     recoverServices()
-    process.on('exit', stopAllServices)
+    run(`INSERT OR REPLACE INTO kv (key, value) VALUES ('running', '1')`)
+    // A crash exits non-zero and still fires 'exit'; only a clean stop clears the flag.
+    process.on('exit', code => { stopAllServices(); if (code === 0) run(`INSERT OR REPLACE INTO kv (key, value) VALUES ('running', '0')`) })
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0))
     initNotify()
     start()
