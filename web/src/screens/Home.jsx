@@ -161,6 +161,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       <nav className="hq-config" aria-label="Config and vault">
         <Tool label="Settings" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4" onClick={() => setSheet('settings')} />
         <Tool label="Vault" d="M4 5h16v14H4zM4 9h16M10 13h4" href="#/vault" />
+        <Tool label="Activity" d="M3 12h4l3 7 4-14 3 7h4" href="#/activity" />
         <Tool label="Team" d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6" href="#/team" />
         <Tool label="Projects" d="M3 7h7l2 2h9v10H3z" href="#/projects" />
       </nav>

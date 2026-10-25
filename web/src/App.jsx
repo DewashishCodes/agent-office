@@ -11,6 +11,7 @@ import Inbox, { KIND, NotifyCard } from './screens/Inbox.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
+import Activity from './screens/Activity.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -21,7 +22,7 @@ const ICONS = {
 }
 const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['team', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home' }
+const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home', activity: 'board' }
 // g then a letter switches tab; / focuses the message box. Listed in the header menu.
 const GO_KEYS = { h: 'home', c: 'command', b: 'board', n: 'inbox', a: 'team' }
 
@@ -124,6 +125,7 @@ function Shell({ restarted }) {
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
   else if (view === 'inbox') screen = <Inbox {...ctx} itemId={route.id} />
   else if (view === 'vault') screen = <Vault {...ctx} />
+  else if (view === 'activity') screen = <Activity {...ctx} />
   else if (view === 'onboarding') screen = <Onboarding {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
   else screen = <Home {...ctx} />

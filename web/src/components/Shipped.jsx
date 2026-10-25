@@ -28,6 +28,7 @@ export default function Shipped({ pid }) {
           </li>
         ))}
       </ul>
+      <a className="small" href="#/activity">All activity</a>
       <ul className="list">
         {rows.map(r => (
           <li key={r.id} className="card shipped-item">
