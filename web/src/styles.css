@@ -106,6 +106,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .field > span { font-weight: 550; }
+.field .hint { font-size: 12.5px; }
 input, select, textarea {
   font: inherit; font-size: 15px; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
