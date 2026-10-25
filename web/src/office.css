@@ -71,12 +71,13 @@
 .desk::before { left: 8px; } .desk::after { right: 8px; }
 .tag {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 15px; padding: 2px 6px 1px;
-  font: 10px/1.2 "Silkscreen", var(--mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap;
+  max-width: calc(192px * var(--s) + 8px); font: 12px/1.2 "Silkscreen", var(--mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap;
   background: var(--ink); border: 2px solid #4a443c; color: var(--paper);
 }
 .station.selected .tag { background: #d97757; border-color: #d97757; color: var(--ink); }
 .doing { display: block; max-width: calc(192px * var(--s) + 16px); margin-top: 3px; font-size: 11px; color: #c9c1b2; text-align: center; }
-.light { width: 8px; height: 8px; background: #6f6a63; box-shadow: 0 0 0 1px var(--ink); }
+.tag .clip { min-width: 0; }
+.light { flex: none; width: 8px; height: 8px; background: #6f6a63; box-shadow: 0 0 0 1px var(--ink); }
 .l-busy .light { background: #6bd46d; box-shadow: 0 0 6px #6bd46d; }
 .l-wait .light, .l-hold .light { background: #e8b04a; }
 .l-ask .light { background: #ff6b5e; animation: blink 1s steps(2) infinite; }
@@ -155,7 +156,7 @@
 .l-doing .kcard { border-left-color: var(--accent); }
 .l-check .kcard { border-left-color: var(--warn); }
 .kcard.blocked { border-left-color: var(--err); }
-.kmeta { font-size: 11.5px; color: var(--muted); }
+.kmeta { font-size: 12px; color: var(--muted); }
 .lane-empty { font-size: 13px; color: var(--muted); padding: 4px 2px; list-style: none; }
 
 /* Order section: open orders with progress, what needs the owner, the order bar. */
@@ -259,7 +260,7 @@
 .strip-tabs { padding-right: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 .strip-tab {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
-  font: 10px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
+  font: 12px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
   color: var(--muted); background: var(--surface-2); border: 2px solid transparent; border-radius: 6px;
 }
 .strip-tab:hover { color: var(--text); }
