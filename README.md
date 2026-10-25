@@ -187,11 +187,11 @@ These are guardrails against accidents, not a sandbox against a determined model
 
 ## Costs
 
-No backend, no fees. Every session runs on **your own Claude plan** and counts against its usage limits. Pick a model and effort level per agent, and set daily token budgets per project and per agent in Settings; when a budget runs out, no new tasks start until the next day.
+No backend, no fees. Every session runs on **your own Claude plan** and counts against its usage limits. Pick a model and effort level per agent, and set daily token budgets per project and per agent, and a daily dollar budget per project, in Settings; when a budget runs out, no new tasks start until the next day.
 
 <img src="web/public/clawd/limit-5h/loop.gif" width="56" align="left" alt="" />
 
-The header shows what you spent today and how much of your 5-hour limit is used.
+The header shows what you spent today and how much of your 5-hour and weekly limits is used.
 <br clear="left" />
 
 ## Platform
