@@ -341,7 +341,8 @@ app.post('/api/projects/:id/resume', (req, res) => {
 
 // Chat and orders
 
-app.get('/api/projects/:id/chats', (req, res) => res.json(all(`SELECT c.*, (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) messages
+app.get('/api/projects/:id/chats', (req, res) => res.json(all(`SELECT c.*, (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) messages,
+  EXISTS (SELECT 1 FROM orders WHERE chat_id = c.id AND status = 'awaiting_approval') pending_plan
   FROM chats c WHERE project_id = ? AND floor = ? ORDER BY updated_at DESC, id DESC LIMIT 100`, project(req).id, floorKey(req.query.floor))))
 
 app.get('/api/projects/:id/messages', (req, res) => {

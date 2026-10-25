@@ -5,8 +5,8 @@ import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
 import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
 
-// The open chat per project and floor. Kept across screens but not across reloads, so every visit starts a new chat.
-const openChat = {}
+// The open chat per project and floor, kept across reloads.
+const storedChat = slot => { try { return Number(localStorage.getItem(`crew.chat.${slot}`)) || null } catch { return null } }
 // Phones keep Enter for new lines; the Send button sends.
 const enterSends = !matchMedia('(pointer: coarse)').matches
 
@@ -19,12 +19,19 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
   const lead = agents?.find(a => a.role === 'orchestrator' && a.floor === floor.key)
   const leadName = lead?.name || 'Orchestrator'
   const slot = `${pid}:${floor.key}`
-  const [chatId, setChatState] = useState(openChat[slot] ?? null)
-  useEffect(() => setChatState(openChat[slot] ?? null), [slot])
+  const [chatId, setChatState] = useState(null)
   const [listOpen, setListOpen] = useState(false)
   const [hotfix, setHotfix] = useState(false)
-  const pick = id => { openChat[slot] = id; setChatState(id); setListOpen(false); atBottom.current = true }
+  const pick = id => { try { localStorage.setItem(`crew.chat.${slot}`, String(id ?? '')) } catch {} setChatState(id); setListOpen(false); atBottom.current = true }
   const [chats] = useData(agents && `/projects/${pid}/chats?floor=${floor.key}`, on(pid, 'chat', 'message'))
+  // On arrival: the chat left open, else one whose plan waits for approval, else the latest. New chat stays one tap away.
+  const decided = useRef(null)
+  useEffect(() => {
+    if (!chats || decided.current === slot) return
+    decided.current = slot
+    const s = storedChat(slot)
+    setChatState((chats.find(c => c.id === s) || chats.find(c => c.pending_plan) || chats[0])?.id ?? null)
+  }, [slot, chats])
   const [loaded, , error] = useData(chatId && `/projects/${pid}/messages?chat=${chatId}`, on(pid, 'message'))
   const messages = chatId ? loaded : []
   const title = chats?.find(c => c.id === chatId)?.title || 'New chat'
