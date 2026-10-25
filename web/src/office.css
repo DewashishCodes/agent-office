@@ -302,6 +302,8 @@
 .floor-add:hover { color: var(--accent); border-color: var(--accent); }
 .room .sign { color: var(--floor, #d97757); border-color: var(--floor, #d97757); }
 .chat-floors { position: sticky; top: 49px; z-index: 3; padding: 6px 0; background: var(--bg); }
+/* Page Down, focus and scrollIntoView stop below the sticky header and floor bar instead of under them. */
+html:has(.chat-floors) { scroll-padding-top: 100px; }
 .floor-bar .strip-tabs { flex: 0 1 auto; }
 .needs-strip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); min-width: 0; }
 @media (max-width: 899px) {
