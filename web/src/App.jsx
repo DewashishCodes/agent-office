@@ -22,6 +22,8 @@ const ICONS = {
 const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['team', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
 const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home' }
+// g then a letter switches tab; / focuses the message box. Listed in the header menu.
+const GO_KEYS = { h: 'home', c: 'command', b: 'board', n: 'inbox', a: 'team' }
 
 // '#/agent/12' -> { view: 'agent', id: 12 }; a push deep link '#/inbox/<item>/<project>' also names the project.
 function parseHash() {
@@ -70,6 +72,17 @@ function Shell({ restarted }) {
     const f = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
     addEventListener('hashchange', f)
     return () => removeEventListener('hashchange', f)
+  }, [])
+  useEffect(() => {
+    let g = 0
+    const f = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable], .xterm, dialog')) return
+      if (e.key === '/') { const c = document.querySelector('#order-text, #hq-order'); if (c) { e.preventDefault(); c.focus() } }
+      else if (g && Date.now() - g < 1000 && GO_KEYS[e.key]) location.hash = `#/${GO_KEYS[e.key]}`
+      g = e.key === 'g' ? Date.now() : 0
+    }
+    addEventListener('keydown', f)
+    return () => removeEventListener('keydown', f)
   }, [])
 
   const [projects, reloadProjects, projectsError] = useData('/projects', ev => ev.type === 'project')
@@ -184,6 +197,7 @@ function Header({ projects, project, detail, onPick, reload }) {
         <a className="btn ghost" href="#/projects">Projects</a>
         <Button variant="ghost" onClick={() => logout(false)}>Log out</Button>
         <ConfirmButton variant="ghost" confirm="Sign out every device" onConfirm={() => logout(true)} disabled={busy}>Log out everywhere</ConfirmButton>
+        <p className="menu-keys muted small"><kbd>/</kbd> message box, <kbd>g</kbd> then <kbd>h</kbd> Home, <kbd>c</kbd> Command, <kbd>n</kbd> Needs you, <kbd>a</kbd> Agents, <kbd>b</kbd> Board</p>
       </More>
       <ErrorText error={error} />
     </header>
