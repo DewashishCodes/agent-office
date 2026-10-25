@@ -159,6 +159,10 @@ tailscale serve --bg 5190
 
 Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected), log in, then **Add to Home Screen** to install the app and turn on push notifications.
 
+- A notification opens its card. Plans and ready PRs carry **Approve** and **Merge** buttons that work from the notification itself.
+- The installed app's icon shows how many things wait for you.
+- When the PC is off or out of reach, the app still opens and shows the last Needs you list it saw, with a Retry button.
+
 > [!CAUTION]
 > Never expose port 5190 to the open internet: no port forwarding, no public tunnels. Anyone who gets in can run commands on your computer through the agents.
 
