@@ -242,6 +242,8 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
 .plan-detail { padding: 0 10px 10px 28px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .plan-task.edit { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .plan-task.edit .row { align-items: flex-end; }
+.plan-task .deps { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.plan-task .deps legend { padding: 0; margin-bottom: 4px; font-weight: 550; }
 .key { color: var(--muted); }
 
 /* Board */

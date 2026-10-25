@@ -176,6 +176,8 @@ export function PlanCard({ orderId, pid, agents }) {
     reload()
   })
   const setField = (i, k, v) => setEditing(ts => ts.map((t, j) => (j === i ? { ...t, [k]: v } : t)))
+  const workers = agents?.filter(a => a.owned_paths?.length && a.floor === (order.floor || 'tech')) || []
+  const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean)
 
   return (
     <article className="card plan" aria-label={`Plan for order ${orderId}`}>
@@ -200,7 +202,11 @@ export function PlanCard({ orderId, pid, agents }) {
             </label>
             <div className="row">
               <label className="field grow"><span>Agent</span>
-                <input list={`agents-${orderId}`} value={t.agent ?? t.role ?? ''} onChange={e => setField(i, 'agent', e.target.value)} />
+                <select value={t.agent || ''} onChange={e => setField(i, 'agent', e.target.value)}>
+                  {!t.agent && <option value="">Any {t.role || 'agent'}</option>}
+                  {t.agent && !workers.some(a => a.name === t.agent) && <option value={t.agent}>{t.agent} (not on this floor)</option>}
+                  {workers.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                </select>
               </label>
               <label className="field"><span>Size</span>
                 <select value={t.size} onChange={e => setField(i, 'size', e.target.value)}>
@@ -208,6 +214,23 @@ export function PlanCard({ orderId, pid, agents }) {
                 </select>
               </label>
             </div>
+            {editing.length > 1 && (
+              <fieldset className="field deps"><legend>Starts after</legend>
+                {editing.filter(o => o.key !== t.key).map(o => (
+                  <label key={o.key} className="check small">
+                    <input type="checkbox" checked={(t.depends_on || []).includes(o.key)}
+                      onChange={e => setField(i, 'depends_on', e.target.checked ? [...(t.depends_on || []), o.key] : t.depends_on.filter(k => k !== o.key))} />
+                    <span className="mono">{o.key}</span> {o.title}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <label className="field"><span>Files it may change (one path or glob per line)</span>
+              <textarea rows="2" className="mono" value={t.filesText} onChange={e => setField(i, 'filesText', e.target.value)} spellCheck="false" />
+            </label>
+            <label className="field"><span>Done when (one check per line)</span>
+              <textarea rows="2" value={t.acceptanceText} onChange={e => setField(i, 'acceptanceText', e.target.value)} />
+            </label>
           </li>
         ) : (
           <li key={t.key} className="plan-task">
@@ -230,11 +253,10 @@ export function PlanCard({ orderId, pid, agents }) {
           </li>
         ))}
       </ol>
-      <datalist id={`agents-${orderId}`}>{agents?.filter(a => a.owned_paths?.length).map(a => <option key={a.id} value={a.name} />)}</datalist>
       {open && !editing && (
         <div className="actions">
           <Button variant="primary" disabled={busy} onClick={() => act('approve', {})}>Approve</Button>
-          <Button disabled={busy} onClick={() => setEditing((plan.tasks || []).map(t => ({ ...t })))}>Edit</Button>
+          <Button disabled={busy} onClick={() => setEditing((plan.tasks || []).map(t => ({ ...t, filesText: (t.files || []).join('\n'), acceptanceText: (t.acceptance || []).join('\n') })))}>Edit</Button>
           <ConfirmButton variant="ghost" confirm="Reject plan" onConfirm={() => act('reject')} disabled={busy}>Reject</ConfirmButton>
         </div>
       )}
@@ -244,7 +266,7 @@ export function PlanCard({ orderId, pid, agents }) {
             <textarea rows="3" value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="For example: split t2, the backend should own the migration" />
           </label>
           <div className="actions">
-            <Button variant="primary" disabled={busy} onClick={() => act('approve', { tasks: editing })}>Approve edited plan</Button>
+            <Button variant="primary" disabled={busy} onClick={() => act('approve', { tasks: editing.map(({ filesText, acceptanceText, ...t }) => ({ ...t, files: lines(filesText), acceptance: lines(acceptanceText) })) })}>Approve edited plan</Button>
             <Button disabled={busy || !feedback.trim()} onClick={() => act('revise', { feedback: feedback.trim() })}>Ask for a new plan</Button>
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
           </div>
