@@ -126,12 +126,31 @@ export function Item({ i, linked }) {
   )
 }
 
+// Once, on a phone or tablet that has not been asked yet: what arrives, and the button to allow it.
+export function NotifyCard() {
+  const [shown, setShown] = useState(() => {
+    try {
+      return 'PushManager' in window && 'Notification' in window && Notification.permission === 'default'
+        && matchMedia('(pointer: coarse)').matches && !localStorage.getItem('crew.notifyCard')
+    } catch { return false }
+  })
+  if (!shown) return null
+  const hide = () => { setShown(false); try { localStorage.setItem('crew.notifyCard', '1') } catch {} }
+  return (
+    <div className="banner notify-card" role="region" aria-label="Notifications">
+      <span>Get a notification when a plan waits for approval, a PR is ready to merge, or an agent asks you something. Approve and Merge work from the notification.</span>
+      <PushButton onOn={hide} />
+      <Button small variant="ghost" onClick={hide}>Not now</Button>
+    </div>
+  )
+}
+
 function urlB64(s) {
   const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'))
   return Uint8Array.from(b, c => c.charCodeAt(0))
 }
 
-export function PushButton() {
+export function PushButton({ onOn }) {
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   const [on, setOn] = useState(false)
   const [run, busy, error] = useAction()
@@ -148,6 +167,7 @@ export function PushButton() {
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(publicKey) })
     await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } })
     setOn(true)
+    onOn?.()
   })
   return (
     <div>

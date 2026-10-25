@@ -320,6 +320,8 @@ h1 .count { vertical-align: middle; }
 .inbox-item { display: flex; flex-direction: column; gap: 8px; }
 .inbox-item.resolved { opacity: .7; }
 .inbox-item.linked { border-color: var(--accent); }
+.notify-card { background: var(--accent-soft); color: var(--text); font-weight: 400; }
+.notify-card > span { flex: 1 1 260px; }
 
 /* Vault */
 .seg { display: flex; gap: 4px; flex-wrap: wrap; }

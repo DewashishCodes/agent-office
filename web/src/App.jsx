@@ -7,7 +7,7 @@ import Command from './screens/Command.jsx'
 import Board from './screens/Board.jsx'
 import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
-import Inbox from './screens/Inbox.jsx'
+import Inbox, { NotifyCard } from './screens/Inbox.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
@@ -116,6 +116,7 @@ function Shell({ restarted }) {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
+        {project && <NotifyCard />}
         {restarted && <p className="banner" role="status">The crew server just came back from a crash, power loss or sleep. Interrupted tasks went back in the queue. See Keep it running in the README.</p>}
         {view !== 'onboarding' && ['interviewing', 'proposed'].includes(p?.onboarding_status) && (
           <a className="banner onboard-banner" href="#/onboarding">{p.onboarding_status === 'proposed' ? 'Your office proposal is ready. Review and approve it.' : 'Onboarding is in progress. Answer the questions to set up your office.'}</a>
