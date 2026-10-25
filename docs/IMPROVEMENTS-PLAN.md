@@ -4,7 +4,7 @@
 - [x] **Phase 1** merged to main (PR #1).
 - [x] **Phase 2** merged to main (PR #2).
 - [x] **Phase 3** merged to main (PR #3). CI green on Ubuntu, macOS and Windows (it runs on pushes to main; the pull_request runs did not fire).
-- [x] **Phase 4** done on branch `phase4-polish` from `main` (33 commits), not pushed yet.
+- [x] **Phase 4** done on branch `phase4-polish` from `main`, pushed as PR #4 (with README and CONTRACTS updates). Merge it, then CI runs on main.
 
 State at the end of phase 4: `npm test` 62/62, `npm run check`, `npm run build` and `npm run smoke:web` green, no dashes in the diff. Checked in the browser at 390px and 1366px on a copy of the database: Home, Command plan edit with the inline refusal, Activity, Needs you, header menu, Settings, and the offline screen with the server stopped.
 
