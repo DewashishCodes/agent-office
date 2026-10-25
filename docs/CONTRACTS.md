@@ -204,9 +204,9 @@ Every action except a failed one resolves the inbox item.
 
 ### server/notify.js
 ```js
-initNotify()                      // VAPID keys generated once and stored in kv ('vapid'); listen to bus 'event' with type 'inbox' and data.created -> sendPush; start digest timer
+initNotify()                      // VAPID keys generated once and stored in kv ('vapid'); listen to bus 'event' with type 'inbox' and data.created -> sendPush to `/#/inbox/<item>/<project>` with `item` and `actions` (Approve for plan, Merge for a task merge); start digest timer
 publicKey() -> string
-sendPush(title, body, url = '/') // to every push_subs row; delete subscriptions that return 404/410
+sendPush(title, body, url = '/', extra = {}) // payload {title, body, url, ...extra} to every push_subs row; delete subscriptions that return 404/410
 digestNow(project_id) -> string   // plain text: yesterday's done/merged tasks, in review, open inbox count, tokens used. Logged as activity kind 'digest' and pushed
 ```
 Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once per day per project (kv key `digest:<project_id>` = date).
@@ -224,7 +224,7 @@ Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once
 - Agent profile: form for every profile field (owned/readonly paths as one glob per line), notes list + add note, recent tasks, recent runs with their result text (read-only "talk to this agent" view).
 - Inbox: open items newest first, one-tap actions per kind (see API), link to GitHub, answer box for questions. Toggle to show resolved.
 - Projects screen when there is no project yet: input "owner/repo" -> POST /api/projects, show onboarding status.
-- PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
+- PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (an action button posts `/api/inbox/<item>/action` with the cookie and shows a confirmation; a plain tap or a failed action focuses or opens url, which selects that project and scrolls to the card). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key; on a touch device that was never asked, a one-time card under the header offers the same (localStorage `crew.notifyCard`).
 
 ## v2 additions (docs/history/PLAN-V2.md, phases E1 to E5)
 
