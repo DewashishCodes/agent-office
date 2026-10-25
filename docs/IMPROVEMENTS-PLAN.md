@@ -1,12 +1,12 @@
 # Plan: work docs/IMPROVEMENTS.md in phases
 
-## Progress (updated 2026-10-25)
-- [x] **Phase 1** done on branch `phase1-safety-merge` (20 commits, from `main`).
-- [x] **Phase 2** done on branch `phase2-phone-structure` (38 commits, stacked on phase 1).
-- [x] **Phase 3** done on branch `phase3-product-depth` (75 commits, stacked on phase 2). All three pushed; no PRs opened yet.
-- [ ] **Phase 4** next. Start a `phase4-polish` branch from `phase3-product-depth` (or from `main` once the three are merged).
+## Progress (updated 2026-10-26)
+- [x] **Phase 1** merged to main (PR #1).
+- [x] **Phase 2** merged to main (PR #2).
+- [x] **Phase 3** merged to main (PR #3). CI green on Ubuntu, macOS and Windows (it runs on pushes to main; the pull_request runs did not fire).
+- [ ] **Phase 4** in progress on branch `phase4-polish` from `main`.
 
-State at the end of phase 3: `npm test` 58/58, `npm run build` and `npm run smoke:web` green, no dashes in the diff. CI (`.github/workflows/ci.yml`) has not run yet; it will on the first push or PR, and Linux/macOS may expose Windows-only test assumptions.
+State at the end of phase 3: `npm test` 58/58, `npm run build` and `npm run smoke:web` green, no dashes in the diff.
 
 Known gaps to keep in mind (not blockers):
 - Not exercised end to end with live git/GitHub/claude: C3 Resolve conflicts (rebase run + force-with-lease push) and B4 resume after restart. Unit tests cover the state changes and the one-run `git rebase` allowance.
