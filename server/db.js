@@ -271,6 +271,7 @@ export const DEFAULT_SETTINGS = {
   project_daily_cost_budget: null,  // dollars per local day, null = no limit
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
+  github_issues: true,         // one GitHub issue per approved task, labelled as it moves
   auto_allow_bash: '^(npm (test|ci|run \\S+)\\b|npm (install|i)\\s*$|(pnpm|yarn) (test|run \\S+)\\b|(pnpm|yarn)( install)?\\s*$|node (--test\\b|(?!-)\\S+)|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 

@@ -260,7 +260,7 @@ export async function approvePlan(order_id, tasks = null) {
     deps: Array.isArray(p.depends_on) ? p.depends_on.map(String) : [],
   }))
   const issues = []
-  for (const s of specs) {
+  if (project.settings.github_issues) for (const s of specs) {
     try {
       issues.push(await createIssue(project, {
         title: s.title,
@@ -271,7 +271,7 @@ export async function approvePlan(order_id, tasks = null) {
   // Rows and their deps are written in one synchronous pass so no tick sees a task without its deps.
   const ids = new Map()
   const rows = specs.map(({ key, deps, ...s }, n) => {
-    const t = { project_id: pid, order_id, plan_key: key, ...s, issue_number: issues[n] }
+    const t = { project_id: pid, order_id, plan_key: key, ...s, issue_number: issues[n] ?? null }
     t.agent_id = matchAgent(agents, t)?.id ?? null
     const id = insert('tasks', t)
     ids.set(key, id)

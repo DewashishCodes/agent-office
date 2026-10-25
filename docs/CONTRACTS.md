@@ -102,7 +102,7 @@ Statuses: `interviewing -> proposed -> running -> pr_open -> done | failed` (`pe
 ```js
 chat(project_id, text) -> Promise<void>     // F2. Saves user message, runs Orchestrator (resume its session), saves reply. If the reply has a plan, creates the order and plan card.
 revisePlan(order_id, feedback) -> Promise<void>  // F4. Re-plan; unchanged tasks keep their keys
-approvePlan(order_id, tasks = null) -> void       // F4. Optional edited task list replaces plan.tasks. Creates task rows + issues, order in_progress, scheduler.kick()
+approvePlan(order_id, tasks = null) -> void       // F4. Optional edited task list replaces plan.tasks. Creates task rows + issues (only with `settings.github_issues`), order in_progress, scheduler.kick()
 rejectPlan(order_id) -> void
 integrateOrder(order_id) -> Promise<void>         // all tasks done: Orchestrator checks the PR diffs fit; order ready_to_merge; one inbox 'merge' item per PR
 parseReply(text) -> { text, plan | null }         // pure. Plan is the last ```json fenced block with a "tasks" array
@@ -259,7 +259,7 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
 - `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`, `conflict`, `merged_at`. `inbox`: `run_id`, `ref`.
-- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget).
+- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget), `github_issues` (default true; false skips `createIssue` and makes `issueStatus` a no-op).
 
 ### Routes
 | Method | Path | Does |

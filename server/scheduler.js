@@ -42,7 +42,7 @@ function oncePerDay(key) {
 
 // GitHub labels are cosmetic; a failed label call must not fail the task.
 export async function issueStatus(project, task, status) {
-  if (!task.issue_number) return
+  if (!task.issue_number || !project.settings.github_issues) return
   try { await setIssueStatus(project, task.issue_number, status) } catch (e) { log(project.id, 'error', `Issue label failed for #${task.issue_number}: ${e.message}`, { task_id: task.id }) }
 }
 

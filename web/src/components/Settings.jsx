@@ -15,6 +15,7 @@ export default function Settings({ project, onClose, reload }) {
     question: String(s.question_timeout_min ?? 30),
     digest: s.digest_hour == null ? '' : String(s.digest_hour),
     approveSmall: s.plan_approval_small !== false,
+    issues: s.github_issues !== false,
     protectedPaths: (s.protected_paths || []).join('\n'),
     bash: s.auto_allow_bash || '',
   })
@@ -30,7 +31,7 @@ export default function Settings({ project, onClose, reload }) {
           name: f.name.trim(),
           settings: {
             project_daily_token_budget: Number(f.budget), project_daily_cost_budget: f.cost === '' ? null : Number(f.cost), permission_timeout_min: Number(f.perm), question_timeout_min: Number(f.question),
-            digest_hour: f.digest === '' ? null : Number(f.digest), plan_approval_small: f.approveSmall,
+            digest_hour: f.digest === '' ? null : Number(f.digest), plan_approval_small: f.approveSmall, github_issues: f.issues,
             protected_paths: lines(f.protectedPaths), auto_allow_bash: f.bash,
           },
         },
@@ -54,6 +55,7 @@ export default function Settings({ project, onClose, reload }) {
           <label className="field"><span>Agents stop waiting for your answer after (minutes)</span><input type="number" min="1" value={f.question} onChange={set('question')} required /></label>
         </div>
         <label className="check"><input type="checkbox" checked={f.approveSmall} onChange={set('approveSmall')} /> Small (S) plans also need my approval</label>
+        <label className="check"><input type="checkbox" checked={f.issues} onChange={set('issues')} /> Open a GitHub issue for every approved task (off: tasks live only here)</label>
         <label className="field"><span>Protected paths: no agent may read or change these (one glob per line)</span>
           <textarea rows="5" className="mono" value={f.protectedPaths} onChange={set('protectedPaths')} />
         </label>
