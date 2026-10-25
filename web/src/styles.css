@@ -279,6 +279,8 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
   .column h2 { position: sticky; top: -10px; margin: -10px -10px 0; padding: 10px; background: var(--surface-2); z-index: 1; }
   .column .task-card .badge { display: none; }
 }
+/* Laptop widths: every column stays on screen instead of scrolling sideways. */
+@media (min-width: 900px) and (max-width: 1199px) { .board { grid-auto-columns: minmax(160px, 1fr); } }
 
 .run summary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 44px; cursor: pointer; padding: 4px 0; }
 .run .pre { padding: 8px 10px; margin: 4px 0 8px; background: var(--surface-2); border-radius: 8px; max-height: 50vh; overflow: auto; }
