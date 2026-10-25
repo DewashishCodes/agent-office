@@ -7,7 +7,7 @@ import Command from './screens/Command.jsx'
 import Board from './screens/Board.jsx'
 import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
-import Inbox, { NotifyCard } from './screens/Inbox.jsx'
+import Inbox, { KIND, NotifyCard } from './screens/Inbox.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
@@ -32,13 +32,33 @@ function parseHash() {
 export default function App() {
   const [authed, setAuthed] = useState(null)
   const [restarted, setRestarted] = useState(false)
+  const check = () => api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, e => setAuthed(e.offline ? 'offline' : false))
   useEffect(() => {
     setAuthHandler(setAuthed)
-    api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, () => setAuthed(false))
+    check()
   }, [])
   if (authed === null) return <div className="splash">Loading</div>
+  if (authed === 'offline') return <Offline onRetry={check} />
   if (!authed) return <Login onDone={() => setAuthed(true)} />
   return <Shell restarted={restarted} />
+}
+
+// The last open Needs you list this device saw, kept for the offline screen.
+function Offline({ onRetry }) {
+  const [busy, setBusy] = useState(false)
+  let items = []
+  try { items = JSON.parse(localStorage.getItem('crew.inbox') || '[]') } catch {}
+  return (
+    <main className="login offline stack">
+      <h1>Can't reach your office</h1>
+      <p className="muted">The PC running Agent Office is off, asleep or out of reach. Agents only work while it is on.</p>
+      <Button variant="primary" disabled={busy} onClick={async () => { setBusy(true); await onRetry(); setBusy(false) }}>{busy ? 'Trying' : 'Retry'}</Button>
+      {items.length > 0 && <>
+        <h2>Needs you, when last seen</h2>
+        <ul className="list">{items.map(i => <li key={i.id} className="card"><span className="muted small">{KIND[i.kind] || i.kind}</span> {i.title}</li>)}</ul>
+      </>}
+    </main>
+  )
 }
 
 function Shell({ restarted }) {
@@ -69,6 +89,9 @@ function Shell({ restarted }) {
   const [detail, reloadDetail] = useData(pid && `/projects/${pid}`,
     ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'run' && ev.data.status !== 'running')))
   const [openInbox] = useData(pid && `/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  useEffect(() => {
+    if (openInbox) try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
+  }, [openInbox])
 
   if (!projects) return <div className="splash">{projectsError ? <ErrorText error={projectsError} /> : 'Loading'}</div>
 

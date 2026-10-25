@@ -54,7 +54,7 @@ function permissionReq(i) {
   return { tool_name: input?.command ? 'Bash' : '', input, summary: i.title.replace(/^.*? asks to run: /, '') }
 }
 
-const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
+export const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
 
 export function Item({ i, linked }) {
   const [text, setText] = useState('')
