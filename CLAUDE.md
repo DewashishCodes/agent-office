@@ -11,6 +11,7 @@ npm run build             # builds web/ into web/dist
 npm start                 # http://localhost:5190; the first start writes OWNER_TOKEN to .env and prints it
 npm test                  # node:test with a fake claude CLI
 npm run smoke:web         # renders every screen once through Vite SSR
+npm run check             # node --check on every server, script and test file (CI runs it)
 ```
 Dev: `npm run dev:server` (5190, --watch) and `npm run dev:web` (Vite on 5191, proxies /api).
 
@@ -33,7 +34,7 @@ One Node process. `docs/CONTRACTS.md` is the detailed module contract; read it b
 - `server/scheduler.js` 5s tick dispatches ready tasks (deps done, owned paths cover files, max_parallel, daily budgets), runs each in `data/worktrees/<project>/crew-t<id>`, gate = changed files vs owned and protected paths, push + PR. Hotfix orders (`orders.hotfix`, from Quick task or the Command toggle) skip the PR, Reviewer and QA: after the gate the branch is rebased onto the project branch (`rebaseOnto`) and pushed to it, never forced. The project branch is `projects.default_branch`, switched from Settings (`PATCH default_branch`, checked against `GET /branches`). 60s poll for merges. `markMerged`/`markOnboarded` are the single idempotent merge path. Boot recovery puts interrupted tasks back.
 - `server/pipeline.js` Reviewer then QA per PR, verdicts as fenced json, failures go through `failTask` (2 attempts, then Inbox).
 - `server/onboarding.js` interview then office proposal. New projects come in three ways (GitHub repo, an existing folder, a blank folder with a PRD); the crew always works in its own clone, and a folder without a GitHub remote gets a private repo after the owner confirms. The Onboarding agent (resumed session) reads the repo or PRD, asks questions, and proposes floors and agents (`rules.parseProposal`); approving hires them and writes CLAUDE.md, PLAYBOOK, owned paths and `.crew/BRIEF.md` (PR, or straight to main for a blank repo plus a first Tech order). Every agent prompt includes BRIEF.md. Re-run from Projects or Settings.
-- `server/index.js` Express routes, owner-token cookie auth, inbox actions. `server/notify.js` web push (VAPID in kv) and daily digest.
+- `server/index.js` the app: hooks, MCP, owner sessions (`sessions` table, Log out everywhere), SSE, push, static files, boot. The `/api` routes are in `server/routes/<domain>.js` (Routers mounted in order), shared request helpers in `server/http.js`. `server/notify.js` web push (VAPID in kv) and daily digest.
 - `web/` React 19 PWA, plain CSS, hash routing. Home is the office (rail, agent space with Clawd desks and flying crew notes, the selected agent's real terminal via xterm.js, kanban strip, orders, Needs you). Bottom tabs: Home, Command, Needs you (Inbox screen: open items, history toggle), Agents (Team), Board (In flight and Shipped views). Other screens: Login, Projects, AgentProfile, Vault, Activity (the activity log with a kind filter). The old Wall folded into Home's terminal pane (`components/AgentTile.jsx`); `/api/projects/:id/wall` still feeds Home. Badge maps statuses to six owner words (`ui.jsx`); terminal runs have a Text view from run_events. Clawd GIFs in `web/public/clawd` (by CodeChrisB/MyClawd, credited in the README), state mapping in `web/src/clawd.js`.
 
 ## Conventions

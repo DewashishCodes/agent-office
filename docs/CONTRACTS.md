@@ -146,8 +146,8 @@ Tests (owner: Brain agent) in `test/*.test.js`: parseReply, matchAgent, readyTas
 
 ## API module (owner: API agent)
 
-### server/index.js
-Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
+### server/index.js and server/routes/
+index.js holds the app, hooks, MCP, auth, events, push, static files and boot; the `/api` routes live in `server/routes/{projects,orders,runs,support,vault,agents,inbox}.js` (each an `express.Router`, mounted in that order behind the cookie check), with shared request helpers (`fail`, `int`, `found`, `project`, `floorKey`, ...) in `server/http.js`. Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
 
 Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and creates a random session (table `sessions`, stored as its sha256) and sets cookie `crew=<session id>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires a session under 30 days old. `GET /api/health -> {ok, uptime, projects, running_runs}` (no cookie from loopback without X-Forwarded-For, else the cookie). `GET /api/backup` streams a `VACUUM INTO` snapshot of the database. Server output is also written to `data/server.log` (`server/logfile.js`, rotated to `.1` at 10 MB). `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout {all?}` deletes this session, or every session with all ("Log out everywhere").
 
@@ -294,7 +294,7 @@ Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends
 | POST | /api/runs/:id/pty/input `{data}`, /pty/resize `{cols, rows}` | keyboard after Take over, size from the driving view |
 | GET, POST | /api/projects/:id/vault, /vault/doc?path=, /vault/files?name=&type= (octet-stream body) | list, repo doc, note or decision, upload |
 | GET, PATCH, DELETE | /api/vault/:id, GET /api/vault/:id/file | entry, edit, delete, download |
-PATCH /api/projects/:id validates every settings key (`SETTINGS` in index.js).
+PATCH /api/projects/:id validates every settings key (`SETTINGS` in routes/projects.js).
 
 ### Vault
 Table `vault (kind note | decision | file, title, body, file, mime, size, tags, author_agent_id)`, `server/vault.js`. Crew MCP adds `vault_search`, `vault_read`, `vault_write` (task, QA: all; Reviewer: search, read; Orchestrator: all). Task prompts list titles via `vaultIndex`. `permissionPolicy` allows Read/Glob/Grep/LS under `settings.read_roots` (the scheduler passes the vault dir).
