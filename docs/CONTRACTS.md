@@ -213,12 +213,13 @@ Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once
 
 ## UI module (owner: UI agent)
 
-`web/index.html`, `web/src/main.jsx`, `web/src/App.jsx`, `web/src/api.js`, `web/src/styles.css`, `web/src/screens/{Login,Command,Board,Team,AgentProfile,Inbox,Projects}.jsx`, `web/public/{manifest.json,sw.js,icon.svg}`.
+`web/index.html`, `web/src/main.jsx`, `web/src/App.jsx`, `web/src/api.js`, `web/src/styles.css`, `web/src/screens/{Login,Command,Board,Team,AgentProfile,Inbox,Projects,Home,Vault,Onboarding,Activity}.jsx`, `web/public/{manifest.json,sw.js,icon.svg,fonts/}`.
 
 - React 19, no router library: tab state in App plus `location.hash` (`#/command`, `#/board`, `#/team`, `#/agent/12`, `#/inbox`). Project switcher at the top (stored in localStorage, try/catch).
 - `api.js`: `api(path, {method, body})` with `credentials: 'same-origin'`, throws on non-2xx with the server's `error`; a 401 shows Login. `useEvents(onEvent)` hook with one shared `EventSource('/api/events')`. Screens refetch their list when an event of the matching type and project arrives (simple and correct beats clever).
 - Mobile first: works at 380px, bottom tab bar (Command, Board, Team, Inbox, with an open-inbox count badge), left sidebar from 900px. Light and dark via CSS variables and `prefers-color-scheme`. Plain CSS, no framework. Tap targets at least 44px. Labels on every input.
 - Command: chat with the Orchestrator; orchestrator message with `order_id` renders the plan card (summary, tasks with owner role, size, depends_on, acceptance on expand) with Approve, Edit (title, agent from the floor's workers, size, depends_on, files, acceptance, and a feedback box -> revise; an edited plan is refused when `rules.planGaps` finds a task its agent cannot take), Reject while the order is `awaiting_approval`. Show "Orchestrator is thinking" with the run's `last_event` while an orchestrator run is running. Kill switch button in the header menu (with a confirm step inside the UI, not `window.confirm`).
+- Activity (`#/activity`): `GET /api/projects/:id/activity?limit=500`, newest first, a select filters by kind; linked from Home's config tiles and the Shipped view.
 - Board: six columns (horizontal scroll on mobile, one column visible at a time with a column picker is fine), filter by agent and by order; tap a card -> sheet with description, acceptance, notes, attempts, PR link, issue link, activity and runs, Retry button when blocked.
 - Team: card per agent (initials avatar, name, role, status dot, current task, today's tokens, live last_event), Add (pick template or blank), Clone, Pause/Resume, Remove (hidden for the Orchestrator). Tap -> Agent profile.
 - Agent profile: form for every profile field (owned/readonly paths as one glob per line), notes list + add note, recent tasks, recent runs with their result text (read-only "talk to this agent" view).
