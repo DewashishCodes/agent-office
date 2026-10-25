@@ -281,15 +281,15 @@ Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends
 
 ### Runner
 - Engine per run: `pty` for kinds `task | review | qa` (interactive `claude` in a pty), `json` for the rest, for everything under `CREW_TERMINAL=json` and under `CREW_CLAUDE_BIN`. `runs.terminal = 1` marks pty runs. The `runClaude` contract and its result are unchanged.
-- pty runs: `--session-id <uuid>` (or `--resume`), one `--settings` JSON with deny rules, hooks (PermissionRequest, Stop, UserPromptSubmit) and a status line, all running `node server/hook.mjs <base>/hook/<token> hook|status`.
-- `hookEvent(token, kind, body)`: status line -> cost (`cost.total_cost_usd`, cumulative per process) and kv `rate_limit` from `rate_limits.five_hour.used_percentage`; PermissionRequest -> policy, `ask` holds the hook until `answerPermission` or the timeout; Stop -> `result` run_event, run ends 2.5s later unless a new prompt was submitted, the run is kept open or the owner has the keyboard.
+- pty runs: `--session-id <uuid>` (or `--resume`), one `--settings` file (`data/prompts/run-<id>-settings.json`, removed at the end) with deny rules, hooks (PermissionRequest, Stop, UserPromptSubmit) and a status line, all running `node server/hook.mjs <base>/hook/<token> hook|status <secret>`. The per-run secret goes back as the `X-Crew-Hook` header; the token alone gets nothing.
+- `hookEvent(token, kind, body, secret)`: status line -> cost (`cost.total_cost_usd`, cumulative per process) and kv `rate_limit` from `rate_limits.five_hour.used_percentage`; PermissionRequest -> policy, `ask` holds the hook until `answerPermission` or the timeout; Stop -> `result` run_event, run ends 2.5s later unless a new prompt was submitted, the run is kept open or the owner has the keyboard.
 - Tokens come from the session jsonl (`input + cache_creation`, `output`, counted once per API message id).
 - `watchPty(run_id, fn)`: `{cols, rows}`, the buffered screen, then chunks; `null` at the end. `ptyInput` only while `state = handed_off`. `ptyResize` broadcasts the new size. `handoffRun` on a pty run returns `{ terminal: true, ... }` and keeps the process.
 
 ### Routes
 | Method | Path | Does |
 | --- | --- | --- |
-| POST | /hook/:token?kind=hook\|status | loopback only, per-run token; body up to 50 MB |
+| POST | /hook/:token?kind=hook\|status | loopback only, per-run token and `X-Crew-Hook` secret; body up to 50 MB |
 | GET | /api/runs/:id/pty | SSE: live terminal, or the tail of `data/pty/run-<id>.log` then `event: end` |
 | POST | /api/runs/:id/pty/input `{data}`, /pty/resize `{cols, rows}` | keyboard after Take over, size from the driving view |
 | GET, POST | /api/projects/:id/vault, /vault/doc?path=, /vault/files?name=&type= (octet-stream body) | list, repo doc, note or decision, upload |

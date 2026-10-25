@@ -120,11 +120,11 @@ export const app = express()
 // Only a local proxy (Tailscale Serve) may set X-Forwarded-*; otherwise a client could pick its own IP for the login limit.
 app.set('trust proxy', 'loopback')
 
-// Hooks and the status line of terminal runs (server/hook.mjs). Same trust as the crew MCP: loopback plus the per-run token.
+// Hooks and the status line of terminal runs (server/hook.mjs): loopback, the per-run token and the run's hook secret header.
 // Before the global parser: a PermissionRequest for a big Write carries the whole file.
 app.post('/hook/:token', express.json({ limit: '50mb' }), async (req, res) => {
   if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return res.status(403).end()
-  const out = await hookEvent(req.params.token, req.query.kind, req.body)
+  const out = await hookEvent(req.params.token, req.query.kind, req.body, req.get('x-crew-hook'))
   if (typeof out === 'string') res.type('text').send(out)
   else res.json(out)
 })

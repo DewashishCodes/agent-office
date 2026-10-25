@@ -204,7 +204,7 @@ const base = () => `http://127.0.0.1:${process.env.PORT || 5190}`
 
 // In a terminal there is no stdio control channel: hooks and the status line call back into the server instead.
 function hookSettings(e) {
-  const cmd = kind => `node "${HOOK}" ${base()}/hook/${e.token} ${kind}`
+  const cmd = kind => `node "${HOOK}" ${base()}/hook/${e.token} ${kind} ${e.hookSecret}`
   const min = getProject(e.project_id)?.settings.permission_timeout_min || 15
   const on = timeout => [{ matcher: '*', hooks: [{ type: 'command', command: cmd('hook'), timeout }] }]
   return {
@@ -224,7 +224,13 @@ function args(e, resume) {
   // Deny rules apply under every permission mode, bypassPermissions included; --disallowedTools is the same list as insurance.
   const deny = o.disallowedTools || []
   const settings = { ...(deny.length && { permissions: { deny } }), ...(term && hookSettings(e)) }
-  if (Object.keys(settings).length) a.push('--settings', JSON.stringify(settings))
+  // A terminal run's settings hold the hook secret: a file outside the worktree, since the agent can read its own command line.
+  if (term) {
+    e.settingsFile = join(DATA_DIR, 'prompts', `run-${e.run_id}-settings.json`)
+    mkdirSync(join(DATA_DIR, 'prompts'), { recursive: true })
+    writeFileSync(e.settingsFile, JSON.stringify(settings))
+    a.push('--settings', e.settingsFile)
+  } else if (Object.keys(settings).length) a.push('--settings', JSON.stringify(settings))
   if (deny.length) a.push('--disallowedTools', deny.join(','))
   // Comma-joined single arg: the flags are variadic and would swallow following args.
   if (o.allowedTools?.length) a.push('--allowedTools', o.allowedTools.join(','))
@@ -471,9 +477,9 @@ function turnEnd(e, b) {
 }
 
 // Called by server/hook.mjs for every hook and status line refresh of a terminal run. Returns what the hook prints.
-export function hookEvent(token, kind, b = {}) {
+export function hookEvent(token, kind, b = {}, secret) {
   const e = live.get(tokens.get(token))
-  if (!e || e.engine !== 'pty') return kind === 'status' ? '' : {}
+  if (!e || e.engine !== 'pty' || secret !== e.hookSecret) return kind === 'status' ? '' : {}
   // On --resume the file already holds earlier turns; they belong to earlier runs.
   if (!e.jsonl && typeof b.transcript_path === 'string') {
     e.jsonl = b.transcript_path
@@ -532,7 +538,7 @@ function finish(e, code, spawnError) {
   for (const p of e.perms.values()) clearTimeout(p.timer)
   live.delete(e.run_id)
   if (e.token) tokens.delete(e.token)
-  if (e.spFile) rmSync(e.spFile, { force: true })
+  for (const f of [e.spFile, e.settingsFile]) if (f) rmSync(f, { force: true })
   closePermissionItems(e.run_id)
   if (/[\\/]worktrees[\\/]/.test(e.cwd || '')) reapFolder(e.cwd)
   const r = e.result
@@ -564,6 +570,8 @@ export function runClaude(opts) {
   live.set(run_id, e)
   // Terminal runs need the token for their hooks even without crew tools.
   if (opts.mcp?.length || engine === 'pty') { e.token = randomBytes(24).toString('hex'); tokens.set(e.token, run_id) }
+  // The token alone would let the agent post a fake Stop or status line to its own run; hooks also send this.
+  if (engine === 'pty') e.hookSecret = randomBytes(24).toString('hex')
   if (engine === 'pty') {
     e.session_id ??= randomUUID()
     update('runs', run_id, { session_id: e.session_id })
