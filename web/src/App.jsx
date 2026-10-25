@@ -90,7 +90,10 @@ function Shell({ restarted }) {
     ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'run' && ev.data.status !== 'running')))
   const [openInbox] = useData(pid && `/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
   useEffect(() => {
-    if (openInbox) try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
+    if (!openInbox) return
+    try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
+    // The count on the installed app's icon; browsers without the Badging API skip it.
+    if ('setAppBadge' in navigator) (openInbox.length ? navigator.setAppBadge(openInbox.length) : navigator.clearAppBadge()).catch(() => {})
   }, [openInbox])
 
   if (!projects) return <div className="splash">{projectsError ? <ErrorText error={projectsError} /> : 'Loading'}</div>
