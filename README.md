@@ -204,9 +204,13 @@ Built and tested on **Windows 11**. macOS and Linux are **untested**: the code h
 npm run dev:server        # API on 5190, restarts on change
 npm run dev:web           # Vite on 5191, proxies /api
 npm test                  # node:test with a fake claude CLI, no real sessions
+npm run check             # node --check on every server, script and test file
+npm run smoke:web         # renders every screen once through Vite SSR
 ```
 
-[`CLAUDE.md`](CLAUDE.md) has the architecture, conventions and gotchas. [`docs/CONTRACTS.md`](docs/CONTRACTS.md) has the module contracts. Design history is in [`docs/history/`](docs/history/).
+CI runs all of these, plus the build, on Windows, macOS and Linux. API routes live in `server/routes/`, one file per area.
+
+[`CLAUDE.md`](CLAUDE.md) has the architecture, conventions and gotchas. [`docs/CONTRACTS.md`](docs/CONTRACTS.md) has the module contracts. Design history is in [`docs/history/`](docs/history/). [`CHANGELOG.md`](CHANGELOG.md) lists what changed and what to do after pulling, prompt changes included.
 
 ## Credits
 
