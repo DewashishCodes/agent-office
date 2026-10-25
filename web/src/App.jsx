@@ -132,7 +132,7 @@ function Header({ projects, project, detail, onPick, reload }) {
   const budget = project.settings?.project_daily_token_budget
   const [day, toggleTheme] = useTheme()
   const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload() })
-  const logout = () => run(async () => { await api('/logout', { method: 'POST' }); location.reload() })
+  const logout = all => run(async () => { await api('/logout', { method: 'POST', body: { all } }); location.reload() })
 
   return (
     <header className="top">
@@ -154,7 +154,8 @@ function Header({ projects, project, detail, onPick, reload }) {
       <More label="Menu">
         {!project.paused && <ConfirmButton variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all agents</ConfirmButton>}
         <a className="btn ghost" href="#/projects">Projects</a>
-        <Button variant="ghost" onClick={logout}>Log out</Button>
+        <Button variant="ghost" onClick={() => logout(false)}>Log out</Button>
+        <ConfirmButton variant="ghost" confirm="Sign out every device" onConfirm={() => logout(true)} disabled={busy}>Log out everywhere</ConfirmButton>
       </More>
       <ErrorText error={error} />
     </header>

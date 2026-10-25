@@ -135,6 +135,10 @@ CREATE TABLE IF NOT EXISTS push_subs (
   sub TEXT NOT NULL                       -- JSON PushSubscription
 );
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS sessions (     -- owner logins; logout deletes the row so a copied cookie stops working
+  id TEXT PRIMARY KEY,                    -- sha256 hex of the cookie value, so the database alone cannot log in
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS chats (        -- Command conversations; the lead only sees its own chat as context
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),

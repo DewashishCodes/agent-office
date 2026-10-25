@@ -33,7 +33,9 @@ if (!process.env.OWNER_TOKEN || process.env.OWNER_TOKEN === 'change-me-to-a-long
 }
 
 const sha = s => createHash('sha256').update(s).digest()
-const SESSION = sha(process.env.OWNER_TOKEN).toString('hex')
+const MAX_AGE = 30 * 24 * 3600 * 1000
+// Looked up by its hash, so the comparison never runs on bytes the client chose.
+const sessionId = req => sha((req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('crew='))?.slice(5) || '').toString('hex')
 const fail = (status, message) => Object.assign(new Error(message), { status })
 const int = v => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw fail(400, 'bad id'); return n }
 const found = (row, what) => { if (!row) throw fail(404, `${what} not found`); return row }
@@ -141,7 +143,9 @@ app.post('/api/login', (req, res) => {
     throw fail(401, 'wrong token')
   }
   logins.clear(req.ip)
-  res.cookie('crew', SESSION, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: 30 * 24 * 3600 * 1000 })
+  const sid = randomBytes(32).toString('hex')
+  run('INSERT INTO sessions (id) VALUES (?)', sha(sid).toString('hex'))
+  res.cookie('crew', sid, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: MAX_AGE })
   res.json({ ok: true })
 })
 
@@ -155,8 +159,7 @@ app.get('/api/health', (req, res, next) =>
   ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['x-forwarded-for'] ? health(req, res) : next())
 
 app.use('/api', (req, res, next) => {
-  const c = Buffer.from((req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('crew='))?.slice(5) || '')
-  if (c.length !== SESSION.length || !timingSafeEqual(c, Buffer.from(SESSION))) throw fail(401, 'not logged in')
+  if (!get(`SELECT 1 FROM sessions WHERE id = ? AND created_at > datetime('now', ?)`, sessionId(req), `-${MAX_AGE / 1000} seconds`)) throw fail(401, 'not logged in')
   next()
 })
 
@@ -173,7 +176,13 @@ app.get('/api/backup', (req, res) => {
 })
 
 app.get('/api/me', (req, res) => res.json({ ok: true, restarted: unclean && Date.now() - booted < 60000 }))
-app.post('/api/logout', (req, res) => { res.clearCookie('crew'); res.json({ ok: true }) })
+// all: true signs out every browser and phone, for a lost device or a leaked cookie.
+app.post('/api/logout', (req, res) => {
+  if (req.body?.all) run('DELETE FROM sessions')
+  else run('DELETE FROM sessions WHERE id = ?', sessionId(req))
+  res.clearCookie('crew')
+  res.json({ ok: true })
+})
 
 // Projects
 

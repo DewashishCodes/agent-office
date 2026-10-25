@@ -170,7 +170,7 @@ Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected
 | **Owned paths** | After each task, a gate checks every changed file against the agent's owned paths and sends the task back if anything is outside. |
 | **Merges are yours** | Work arrives as pull requests. The exception is hotfix mode, turned on per order: it skips review and pushes straight to the project branch (never forced). |
 | **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
-| **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. |
+| **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. Each login is its own session: Log out ends it, Log out everywhere (menu) ends them all. |
 | **Kill switch** | One per project. Stops every session at once. |
 
 These are guardrails against accidents, not a sandbox against a determined model. An agent runs as you, with your git and `gh` credentials, and anything it can run (a test script it just edited, `node`, `make`) can reach whatever you can. The safe list refuses paths outside the worktree, but a program it writes and runs is not checked. Run the crew under a separate OS user or in a VM if that matters for your repo.
