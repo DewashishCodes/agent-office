@@ -200,7 +200,7 @@ npm test                  # node:test with a fake claude CLI, no real sessions
 
 ## Credits
 
-The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit. Agent Office is not affiliated with or endorsed by Anthropic.
+The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit. Agent Office is not affiliated with or endorsed by Anthropic. The pixel font Silkscreen (Jason Kottke, The Silkscreen Project Authors) ships in `web/public/fonts/` under the SIL Open Font License 1.1 (`OFL.txt` next to it).
 
 ## License
 

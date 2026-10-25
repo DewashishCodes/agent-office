@@ -1,3 +1,6 @@
+/* Self-hosted so the office works offline and without a request to Google (OFL, web/public/fonts/OFL.txt). */
+@font-face { font-family: "Silkscreen"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/silkscreen-latin.woff2") format("woff2"); }
+
 :root {
   /* Night shift workshop (default): the office room's wood, paper and Clawd orange carried through the app. */
   --bg: #16130f;
