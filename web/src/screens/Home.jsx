@@ -171,6 +171,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
 
       <section className="hq-orders" aria-label="Orders">
         <Orders pid={pid} floor={floor} agents={agents} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
+          fresh={tasks?.length === 0 && orders?.length === 0 && agents.length > 0}
           support={agents.find(a => a.role === 'support')} services={services} onServices={() => setSheet('services')} />
       </section>
 
@@ -241,8 +242,17 @@ function Kanban({ tasks, orders }) {
   })
 }
 
+// First-order nudges per floor; a tap fills the order bar, nothing is sent until the owner does.
+const EXAMPLES = {
+  tech: ['Write tests for the code that has the fewest', 'Add a section to the README on running the project locally', 'Find dead code and remove it'],
+  docs: ['Write a getting started guide from the README and the code', 'Document every public API endpoint'],
+  design: ['Review the main screens for accessibility problems', 'Write the current colours and spacing down as design tokens'],
+}
+
 // The order section has two modes: orders for the build team, and Support for chores (no plan, no PR).
-function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices }) {
+function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices, fresh }) {
+  const [welcome, setWelcome] = useState(() => { try { return !localStorage.getItem(`crew.welcome.${pid}`) } catch { return true } })
+  const hideWelcome = () => { setWelcome(false); try { localStorage.setItem(`crew.welcome.${pid}`, '1') } catch {} }
   const [mode, setMode] = useState(() => { try { return localStorage.getItem('crew.bar') === 'support' ? 'support' : 'order' } catch { return 'order' } })
   const pickMode = m => { setMode(m); setSent(false); try { localStorage.setItem('crew.bar', m) } catch {} }
   const [text, setText] = useState('')
@@ -274,7 +284,21 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
           <SupportThread pid={pid} support={support} floor={floor.key} onSentToTeam={() => { pickMode('order'); setSent(true) }} />
           <ServiceChips services={services} onOpen={onServices} />
         </>
-      ) : (
+      ) : (<>
+        {fresh && welcome && (
+          <div className="card welcome stack">
+            <p><b>Your office is ready.</b> The agents at the desks are Claude Code sessions on this PC. {lead?.name || 'The lead'} turns your orders into a plan, workers build each task as a pull request, then the reviewer{floor.key === 'tech' ? ' and QA' : ''} check it.</p>
+            <p>Give the first order below. Plans to approve, questions and PRs to merge wait for you in Needs you.</p>
+            <div className="actions"><Button small variant="ghost" onClick={hideWelcome}>Got it</Button></div>
+          </div>
+        )}
+        {fresh && (
+          <div className="examples" role="group" aria-label="Example orders">
+            {(EXAMPLES[floor.key] || [`Draft the first ${floor.name} document this product needs`]).map(x => (
+              <button key={x} type="button" className="chip" onClick={() => { setText(x); document.getElementById('hq-order')?.focus() }}>{x}</button>
+            ))}
+          </div>
+        )}
         <ul className="order-list">
           {orders?.length ? orders.map(o => {
             const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
@@ -292,9 +316,9 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
                 {o.status === 'awaiting_approval' && <PlanCard orderId={o.id} pid={pid} agents={agents} />}
               </li>
             )
-          }) : <li className="lane-empty">No open orders</li>}
+          }) : <li className="lane-empty">{fresh ? 'No orders yet. Tap an example to start from it.' : 'No open orders'}</li>}
         </ul>
-      )}
+      </>)}
       <form className={`order-bar ${mode}`} onSubmit={send}>
         <label className="sr-only" htmlFor="hq-order">{mode === 'support' ? 'Ask Support' : `New order for ${lead?.name || 'the lead'}`}</label>
         <input id="hq-order" value={text} onChange={e => { setText(e.target.value); setSent(false) }}

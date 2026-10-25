@@ -166,6 +166,11 @@
 .needs-btn { min-height: 30px; padding: 0 10px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; background: var(--err); color: var(--surface); }
 .needs-btn.calm { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .order-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.welcome { gap: 6px; padding: 10px 12px; font-size: 13.5px; border-color: var(--accent); }
+.welcome p { margin: 0; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; }
+.examples .chip { min-height: 32px; padding: 4px 12px; border-radius: 99px; font: inherit; font-size: 13px; text-align: left; color: var(--text); background: var(--surface-2); border: 1px dashed var(--accent); cursor: pointer; }
+.examples .chip:hover { background: var(--accent-soft); }
 .order-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 13.5px; }
 .order-line > a { color: var(--text); text-decoration: none; }
 .order-line > a:hover { color: var(--accent); }
