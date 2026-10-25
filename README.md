@@ -180,6 +180,8 @@ Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected
 | **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
 | **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. Each login is its own session: Log out ends it, Log out everywhere (menu) ends them all. |
 | **Kill switch** | One per project. Stops every session at once. |
+| **Local endpoints** | Hooks and the crew tools answer only on this machine, and only with a token and a secret made for that one run. |
+| **GitHub issues** | One issue per approved task by default; turn it off in Settings to keep tasks out of your repo's issues. |
 
 These are guardrails against accidents, not a sandbox against a determined model. An agent runs as you, with your git and `gh` credentials, and anything it can run (a test script it just edited, `node`, `make`) can reach whatever you can. The safe list refuses paths outside the worktree, but a program it writes and runs is not checked. Run the crew under a separate OS user or in a VM if that matters for your repo.
 
