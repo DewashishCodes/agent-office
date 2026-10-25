@@ -4,7 +4,7 @@ import { runClaude } from './runner.js'
 import { ensureClone, pullDefault, createIssue, prDiff, prMergeable } from './github.js'
 import { kick } from './scheduler.js'
 import { FLOORS, floorOf } from './roster.js'
-import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder } from './rules.js'
+import { parseReply, parseVerdict, matchAgent, findCycle, chainOrder, planGaps } from './rules.js'
 
 // Named here, not imported from crewmcp.js, which imports this module.
 const ORCH_TOOLS = ['crew_post', 'crew_read', 'vault_search', 'vault_read', 'vault_write']
@@ -243,6 +243,9 @@ export async function approvePlan(order_id, tasks = null) {
   if (!plan?.tasks?.length) throw new Error('Plan has no tasks')
   const loop = findCycle(plan.tasks)
   if (loop) throw new Error(`Plan dependencies loop: ${loop.join(' -> ')}. Edit or revise the plan.`)
+  // The lead's own plan may name a role the scheduler matches later; an owner's edit names the agent, so check it now.
+  const gaps = tasks ? planGaps(activeAgents(pid).filter(a => a.floor === order.floor), plan.tasks) : []
+  if (gaps.length) throw new Error(`These tasks would never start. ${gaps.join('. ')}.`)
   // Synchronous status flip so a second approve click fails instead of duplicating tasks.
   setOrder(order_id, { status: 'in_progress', plan })
   for (const i of openPlanItems(order_id)) resolveInbox(i.id)
