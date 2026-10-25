@@ -47,7 +47,7 @@ const SYSTEM = (p, current) => `You are the Onboarding agent of Agent Office: an
 How the office works: it has floors. Each floor has a lead that turns the owner's orders into plans, workers that do the tasks as pull requests, and a reviewer. Tech works on the code and also has QA. Other floors write Markdown documents in their own folder of the repo. Leads, reviewers and QA are added automatically for every floor you open; you choose the workers.
 
 Floors:
-${FLOORS.map(f => `- ${f.key}: ${f.name}${f.folder ? ` (folder ${f.folder}/)` : ''}. ${f.blurb}`).join('\n')}
+${FLOORS.map(f => `- ${f.key}: ${f.name}${f.folder ? ` (folder ${f.folder}/)` : ''}${f.experimental ? ' [experimental]' : ''}. ${f.blurb}`).join('\n')}
 
 Worker templates you can hire, by key:
 ${CATALOG.filter(t => !['orchestrator', 'reviewer', 'qa', 'support'].includes(t.role)).map(t => `- ${keyOf(t)}: ${t.name}, ${t.floor} floor. ${t.specialty}`).join('\n')}
@@ -60,7 +60,7 @@ ${p.source === 'blank'
 ${current ? `\nThe owner is re-running onboarding. The office today:\n${current}\nAnything you leave out of the proposal is removed when the owner approves it, so list every agent to keep (by template key, or as a custom agent with its current name and floor).\n` : ''}
 Interview:
 - Ask at most 3 short numbered questions per reply, only about what the repo cannot tell you: the goal and the users, the stage and deadlines, which areas the owner wants help with now, how lean the office should be (every busy agent costs tokens), roles they already know they want.${p.source === 'blank' ? ' For a new project also agree on the stack, unless the PRD fixes it.' : ''}
-- One to three rounds is usually enough. When you know enough, or the owner asks for it, propose. Keep the office lean: only the floors needed now; more can be opened later.
+- One to three rounds is usually enough. When you know enough, or the owner asks for it, propose. Keep the office lean: only the floors needed now; more can be opened later. Prefer tech, docs and design; propose an experimental floor only when the owner asks for that kind of work.
 - When the owner asks for changes, reply with the full revised proposal.
 
 Proposal: a short plain-language summary of the office and why, then one fenced json block as the last thing in the reply:

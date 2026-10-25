@@ -62,16 +62,17 @@ export const ONBOARDER = {
 
 // Floors: one team per kind of work, each with its own lead (role orchestrator) and reviewer. Every floor works in the
 // same repo; non-tech floors write documents in their own top-level folder, so they ship as PRs like code does.
+// Tech, Design and Docs are the tried ones; experimental floors work the same way but are offered second.
 export const FLOORS = [
   { key: 'tech', name: 'Tech', folder: null, color: '#d97757', blurb: 'Builds the product: code, tests, specs.' },
   { key: 'design', name: 'Design', folder: 'design', color: '#c49af0', blurb: 'UX flows, wireframes, UI specs, HTML mockups, brand and design tokens.' },
   { key: 'docs', name: 'Docs', folder: 'docs', color: '#6aa8f0', blurb: 'User guides, help center, API reference, changelogs.' },
-  { key: 'marketing', name: 'Marketing', folder: 'marketing', color: '#e8b04a', blurb: 'Positioning, website copy, blog posts, social and launch drafts.' },
-  { key: 'sales', name: 'Sales', folder: 'sales', color: '#6bd46d', blurb: 'Ideal customer profile, pitch, outreach drafts, objection handling.' },
-  { key: 'customer', name: 'Customer', folder: 'customer', color: '#5fc4c4', blurb: 'Onboarding guides, FAQ, support replies, feedback summaries.' },
-  { key: 'legal', name: 'Legal', folder: 'legal', color: '#ff8a7a', blurb: 'Terms, privacy policy, contracts and compliance checklists, all as drafts.' },
-  { key: 'ops', name: 'Ops & Finance', folder: 'ops', color: '#a89e8e', blurb: 'Runway and pricing models, budgets, processes, vendor research.' },
-  { key: 'research', name: 'Research', folder: 'research', color: '#8fd16a', blurb: 'Market and competitor research, user interview synthesis.' },
+  { key: 'marketing', experimental: true, name: 'Marketing', folder: 'marketing', color: '#e8b04a', blurb: 'Positioning, website copy, blog posts, social and launch drafts.' },
+  { key: 'sales', experimental: true, name: 'Sales', folder: 'sales', color: '#6bd46d', blurb: 'Ideal customer profile, pitch, outreach drafts, objection handling.' },
+  { key: 'customer', experimental: true, name: 'Customer', folder: 'customer', color: '#5fc4c4', blurb: 'Onboarding guides, FAQ, support replies, feedback summaries.' },
+  { key: 'legal', experimental: true, name: 'Legal', folder: 'legal', color: '#ff8a7a', blurb: 'Terms, privacy policy, contracts and compliance checklists, all as drafts.' },
+  { key: 'ops', experimental: true, name: 'Ops & Finance', folder: 'ops', color: '#a89e8e', blurb: 'Runway and pricing models, budgets, processes, vendor research.' },
+  { key: 'research', experimental: true, name: 'Research', folder: 'research', color: '#8fd16a', blurb: 'Market and competitor research, user interview synthesis.' },
 ]
 export const floorOf = key => FLOORS.find(f => f.key === key)
 

@@ -34,23 +34,32 @@ export function FloorBar({ open, agents, floor, onPick, onAdd, canAdd }) {
 export function OpenFloorSheet({ pid, floors, open, templates, onOpened, onClose }) {
   const [run, busy, error] = useAction()
   const closed = (floors || []).filter(f => !open.some(o => o.key === f.key))
+  const experimental = closed.filter(f => f.experimental)
   const go = key => run(async () => { await api(`/projects/${pid}/floors`, { method: 'POST', body: { floor: key } }); onOpened(key) })
+  const list = fs => (
+    <ul className="list">
+      {fs.map(f => (
+        <li key={f.key} className="card row-card" style={{ '--floor': f.color }}>
+          <span className="grow">
+            <span className="title"><i className="floor-chip" aria-hidden="true" /> {f.name}</span> <span className="muted small mono">{f.folder}/</span>
+            <span className="muted small" style={{ display: 'block' }}>{f.blurb}</span>
+            <span className="small" style={{ display: 'block' }}>{templates?.filter(t => t.floor === f.key).map(t => t.name).join(', ')}</span>
+          </span>
+          <Button small variant="primary" disabled={busy} onClick={() => go(f.key)}>Open</Button>
+        </li>
+      ))}
+    </ul>
+  )
   return (
     <Sheet title="Open a floor" onClose={onClose}>
       <div className="stack">
         <p className="muted small">A floor is a team with its own lead and reviewer. Its work lands as PRs in its own folder of the repo.</p>
-        <ul className="list">
-          {closed.map(f => (
-            <li key={f.key} className="card row-card" style={{ '--floor': f.color }}>
-              <span className="grow">
-                <span className="title"><i className="floor-chip" aria-hidden="true" /> {f.name}</span> <span className="muted small mono">{f.folder}/</span>
-                <span className="muted small" style={{ display: 'block' }}>{f.blurb}</span>
-                <span className="small" style={{ display: 'block' }}>{templates?.filter(t => t.floor === f.key).map(t => t.name).join(', ')}</span>
-              </span>
-              <Button small variant="primary" disabled={busy} onClick={() => go(f.key)}>Open</Button>
-            </li>
-          ))}
-        </ul>
+        {list(closed.filter(f => !f.experimental))}
+        {experimental.length > 0 && <>
+          <h3>Experimental</h3>
+          <p className="muted small">These work the same way but have seen less use. Read their drafts closely.</p>
+          {list(experimental)}
+        </>}
         <ErrorText error={error} />
       </div>
     </Sheet>
