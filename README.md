@@ -79,9 +79,11 @@ Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="
 
 **Office.** Every agent at a desk, animated by what it is doing right now. Tap one to open its live terminal.
 
-**Command.** Chat with each floor's lead. Plans arrive as cards.
+**Command.** Chat with each floor's lead. Plans arrive as cards with a cost estimate; edit the agent, dependencies, files and checks before you approve. Your chat stays open between visits.
 
-**Board.** Kanban of every task, from planned to merged.
+**Board.** Kanban of every task, from planned to merged, and a Shipped view with weekly totals.
+
+**Activity.** Everything the office logged, filterable by kind.
 
 </td>
 <td width="50%" valign="top">
@@ -91,6 +93,8 @@ Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="
 **Team.** Hire, pause or remove agents; pick each one's model and effort.
 
 **Vault.** Notes and decisions the whole team can search.
+
+**Keyboard.** `/` jumps to the message box; `g` then `h`, `c`, `n`, `a` or `b` switches tabs.
 
 </td>
 </tr>
