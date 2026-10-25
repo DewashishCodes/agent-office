@@ -23,10 +23,10 @@ const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], 
 // Screens without their own tab light up the closest one.
 const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home' }
 
-// '#/agent/12' -> { view: 'agent', id: 12 }
+// '#/agent/12' -> { view: 'agent', id: 12 }; a push deep link '#/inbox/<item>/<project>' also names the project.
 function parseHash() {
-  const [, view = 'home', id] = location.hash.split('/')
-  return { view: view || 'home', id: id ? Number(id) : null }
+  const [, view = 'home', id, project] = location.hash.split('/')
+  return { view: view || 'home', id: id ? Number(id) : null, project: project ? Number(project) : null }
 }
 
 export default function App() {
@@ -62,6 +62,7 @@ function Shell({ restarted }) {
   const [floors] = useData('/floors')
   const [floor, setFloorState] = useState(() => { try { return localStorage.getItem('crew.floor') || 'tech' } catch { return 'tech' } })
   const setFloor = f => { setFloorState(f); try { localStorage.setItem('crew.floor', f) } catch {} }
+  useEffect(() => { if (route.project && route.project !== pick) choose(route.project) }, [route.project])
   const project = projects?.find(p => p.id === pick) || projects?.[0] || null
   const pid = project?.id ?? null
 
@@ -82,7 +83,7 @@ function Shell({ restarted }) {
   // The Wall folded into Home and Team; old #/wall links land on Team.
   else if (view === 'team' || view === 'wall') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
-  else if (view === 'inbox') screen = <Inbox {...ctx} />
+  else if (view === 'inbox') screen = <Inbox {...ctx} itemId={route.id} />
   else if (view === 'vault') screen = <Vault {...ctx} />
   else if (view === 'onboarding') screen = <Onboarding {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />

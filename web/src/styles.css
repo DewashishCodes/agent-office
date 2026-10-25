@@ -319,6 +319,7 @@ h1 .count { vertical-align: middle; }
 /* Inbox */
 .inbox-item { display: flex; flex-direction: column; gap: 8px; }
 .inbox-item.resolved { opacity: .7; }
+.inbox-item.linked { border-color: var(--accent); }
 
 /* Vault */
 .seg { display: flex; gap: 4px; flex-wrap: wrap; }
