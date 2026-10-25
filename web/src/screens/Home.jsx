@@ -133,11 +133,11 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       {wide && (
         <section className="hq-term" aria-label="Terminal">
           <div className="term-strip">
-            <div className="strip-tabs" role="tablist" aria-label="Agents">
+            <div className="strip-tabs" role="group" aria-label="Agents">
               {agents.map(a => {
                 const lt = light(a)
                 return (
-                  <button key={a.id} type="button" role="tab" aria-selected={pick?.id === a.id} className={`strip-tab l-${lt}`}
+                  <button key={a.id} type="button" aria-pressed={pick?.id === a.id} className={`strip-tab l-${lt}`}
                     onClick={() => setSelected(a.id)} title={lt === 'ask' ? `${a.name} is waiting for your answer` : a.name}>
                     <i className="light" aria-hidden="true" />{a.name}
                   </button>
@@ -262,9 +262,9 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
   return (
     <>
       <div className="orders-head">
-        <div className="mode" role="tablist" aria-label="Who gets your message">
-          <button type="button" role="tab" aria-selected={mode === 'order'} onClick={() => pickMode('order')}>Orders</button>
-          <button type="button" role="tab" aria-selected={mode === 'support'} onClick={() => pickMode('support')}>Support</button>
+        <div className="mode" role="group" aria-label="Who gets your message">
+          <button type="button" aria-pressed={mode === 'order'} onClick={() => pickMode('order')}>Orders</button>
+          <button type="button" aria-pressed={mode === 'support'} onClick={() => pickMode('support')}>Support</button>
         </div>
         <span className="grow" />
         <button type="button" className={`needs-btn ${needs ? '' : 'calm'}`} onClick={onNeeds}>{needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'All clear'}</button>

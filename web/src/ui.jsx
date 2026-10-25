@@ -33,9 +33,10 @@ export const orderStatus = o => (o.status === 'done' ? 'merged' : o.status)
 export function Sheet({ title, onClose, children }) {
   const ref = useRef()
   useEffect(() => {
-    const d = ref.current
+    const d = ref.current, opener = document.activeElement
     d.showModal()
-    return () => d.close()
+    // Back to the button that opened it, so keyboard and screen reader users keep their place.
+    return () => { d.close(); opener?.focus?.() }
   }, [])
   return (
     <dialog ref={ref} className="sheet" aria-label={title} onClose={onClose}
@@ -67,8 +68,14 @@ export function More({ label = 'More actions', children }) {
   const ref = useRef()
   useEffect(() => {
     const f = e => { if (ref.current?.open && !ref.current.contains(e.target)) ref.current.open = false }
+    const esc = e => {
+      if (e.key !== 'Escape' || !ref.current?.open) return
+      ref.current.open = false
+      ref.current.querySelector('summary').focus()
+    }
     document.addEventListener('click', f)
-    return () => document.removeEventListener('click', f)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('click', f); document.removeEventListener('keydown', esc) }
   }, [])
   return (
     <details className="more" ref={ref}>

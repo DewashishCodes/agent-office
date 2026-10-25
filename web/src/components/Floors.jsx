@@ -15,11 +15,11 @@ export const currentFloor = (open, floor) => open.find(f => f.key === floor) || 
 export function FloorBar({ open, agents, floor, onPick, onAdd, canAdd }) {
   return (
     <div className="floor-bar">
-      <div className="strip-tabs" role="tablist" aria-label="Floors">
+      <div className="strip-tabs" role="group" aria-label="Floors">
         {open.map(f => {
           const ask = (agents || []).some(a => a.floor === f.key && a.run && light(a) === 'ask')
           return (
-            <button key={f.key} type="button" role="tab" aria-selected={f.key === floor} className={`strip-tab floor-tab ${ask ? 'l-ask' : ''}`}
+            <button key={f.key} type="button" aria-pressed={f.key === floor} className={`strip-tab floor-tab ${ask ? 'l-ask' : ''}`}
               style={{ '--floor': f.color }} onClick={() => onPick(f.key)} title={ask ? `Someone on ${f.name} is waiting for you` : f.blurb}>
               <i className="floor-chip" aria-hidden="true" />{f.name}
             </button>

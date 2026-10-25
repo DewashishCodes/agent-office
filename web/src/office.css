@@ -215,7 +215,7 @@
 /* Order section modes and the Support conversation. */
 .mode { display: inline-flex; padding: 2px; border-radius: 99px; background: var(--surface-2); }
 .mode button { min-height: 28px; padding: 0 12px; border: 0; border-radius: 99px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
-.mode button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+.mode button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
 .order-bar.support .btn.primary { background: #d97757; border-color: #d97757; color: #1b1916; }
 .support-thread { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .sp { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 92%; }
@@ -264,7 +264,7 @@
   color: var(--muted); background: var(--surface-2); border: 2px solid transparent; border-radius: 6px;
 }
 .strip-tab:hover { color: var(--text); }
-.strip-tab[aria-selected="true"] { color: var(--accent-text); background: var(--accent); }
+.strip-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--accent); }
 .strip-tab .light { box-shadow: none; }
 
 /* Needs you: anything waiting on the owner pulses until answered. */
@@ -293,8 +293,8 @@
 .hq-space { gap: 6px; }
 .floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .floor-chip { display: inline-block; width: 8px; height: 8px; background: var(--floor, var(--accent)); box-shadow: 0 0 0 1px rgb(0 0 0 / .4); }
-.floor-tab[aria-selected="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
-.floor-tab[aria-selected="true"] .floor-chip { background: var(--accent-text); }
+.floor-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
+.floor-tab[aria-pressed="true"] .floor-chip { background: var(--accent-text); }
 .floor-add {
   flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; cursor: pointer;
   font: 14px/1 var(--pixel); color: var(--muted); background: var(--surface-2); border: 2px dashed var(--border); border-radius: 6px;
