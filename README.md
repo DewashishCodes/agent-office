@@ -55,19 +55,19 @@ flowchart LR
 
 ## More than a dev team
 
-Tech is always open. Add floors as you need them. Each floor has its own lead, workers and reviewer, writes Markdown under its own folder, and ships PRs the same way code does.
+Tech is always open. Add floors as you need them. Each floor has its own lead, workers and reviewer, writes Markdown under its own folder, and ships PRs the same way code does. Tech, Design and Docs are the well-tried ones; the rest are marked experimental, and onboarding only proposes them when you ask for that kind of work.
 
 | Floor | What it makes |
 |---|---|
 | **Tech** | The product: code, tests, specs |
 | **Design** | UX flows, wireframes, UI specs, HTML mockups, design tokens |
 | **Docs** | User guides, help center, API reference, changelogs |
-| **Marketing** | Positioning, website copy, blog posts, launch drafts |
-| **Sales** | Ideal customer profile, pitch, outreach drafts |
-| **Customer** | Onboarding guides, FAQ, support replies |
-| **Legal** | Terms, privacy policy, compliance checklists (all drafts) |
-| **Ops & Finance** | Runway and pricing models, budgets, processes |
-| **Research** | Market and competitor research, interview synthesis |
+| **Marketing** (experimental) | Positioning, website copy, blog posts, launch drafts |
+| **Sales** (experimental) | Ideal customer profile, pitch, outreach drafts |
+| **Customer** (experimental) | Onboarding guides, FAQ, support replies |
+| **Legal** (experimental) | Terms, privacy policy, compliance checklists (all drafts) |
+| **Ops & Finance** (experimental) | Runway and pricing models, budgets, processes |
+| **Research** (experimental) | Market and competitor research, interview synthesis |
 
 Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="28" alt="" /> for chores: run the tests, start a dev server, query a database. No plan, no PR.
 
