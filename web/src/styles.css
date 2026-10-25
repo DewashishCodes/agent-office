@@ -164,7 +164,7 @@ fieldset.perms legend { font-size: 13px; color: var(--muted); font-weight: 550; 
 .theme-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
 .theme-toggle:hover { color: var(--accent); background: var(--surface-2); }
 .theme-toggle svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-@media (max-width: 899px) { .tok-today { display: none; } }
+@media (max-width: 899px) { .tok-today, .stats .week { display: none; } }
 @media (max-width: 479px) { .stats .gauge { display: none; } }
 .menu {
   position: absolute; right: 0; top: calc(100% + 4px); min-width: 230px;

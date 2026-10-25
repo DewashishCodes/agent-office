@@ -168,8 +168,8 @@ function Shell({ restarted }) {
 
 function Header({ projects, project, detail, onPick, reload }) {
   const [run, busy, error] = useAction()
-  const util = detail?.rate_limit?.utilization
-  const pct = util == null ? null : Math.round(util <= 1 ? util * 100 : util)
+  const pctOf = u => (u == null ? null : Math.round(u <= 1 ? u * 100 : u))
+  const pct = pctOf(detail?.rate_limit?.utilization), week = pctOf(detail?.rate_limit_week?.utilization)
   const budget = project.settings?.project_daily_token_budget
   const [day, toggleTheme] = useTheme()
   const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload() })
@@ -188,6 +188,7 @@ function Header({ projects, project, detail, onPick, reload }) {
         {detail && <Gauge className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
           pct={budget ? (detail.tokens_today / budget) * 100 : null}>{tokens(detail.tokens_today)}{budget ? ` / ${tokens(budget)}` : ''} tok</Gauge>}
         {pct != null && <Gauge title="Five hour rate limit used" pct={pct}>5h {pct}%</Gauge>}
+        {week != null && <Gauge className="week" title="Weekly limit used" pct={week}>7d {week}%</Gauge>}
       </div>
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>

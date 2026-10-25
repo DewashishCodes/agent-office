@@ -249,13 +249,14 @@ app.post('/api/projects', async (req, res) => {
 
 app.get('/api/projects/:id', (req, res) => {
   const p = project(req)
-  const rl = get("SELECT value FROM kv WHERE key = 'rate_limit'")?.value
+  const kv = key => { const v = get('SELECT value FROM kv WHERE key = ?', key)?.value; return v ? JSON.parse(v) : null }
   res.json({
     ...p,
     running_runs: all("SELECT * FROM runs WHERE project_id = ? AND status = 'running' ORDER BY id", p.id),
     tokens_today: projectTokensToday(p.id),
     cost_today: projectCostToday(p.id),
-    rate_limit: rl ? JSON.parse(rl) : null,
+    rate_limit: kv('rate_limit'),
+    rate_limit_week: kv('rate_limit_week'),
   })
 })
 

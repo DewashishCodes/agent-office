@@ -192,13 +192,17 @@ function onLine(e, line) {
     e.ctrl.get(id)?.(m.response)
     e.ctrl.delete(id)
   } else if (m.type === 'rate_limit_event') {
-    const w = m.rate_limit_info?.unifiedWindows?.five_hour
-    if (w?.utilization != null) {
-      const value = JSON.stringify({ utilization: w.utilization, resetsAt: w.resetsAt ?? m.rate_limit_info.resetsAt ?? null, at: now() })
-      run('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'rate_limit', value)
+    for (const [win, key] of LIMITS) {
+      const w = m.rate_limit_info?.unifiedWindows?.[win]
+      if (w?.utilization != null) saveLimit(key, w.utilization, w.resetsAt ?? (win === 'five_hour' ? m.rate_limit_info.resetsAt : null))
     }
   }
 }
+
+// Plan usage windows the CLI reports, and the kv key each is kept under for the header gauges.
+const LIMITS = [['five_hour', 'rate_limit'], ['seven_day', 'rate_limit_week']]
+const saveLimit = (key, utilization, resetsAt) => run('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+  key, JSON.stringify({ utilization, resetsAt: resetsAt ?? null, at: now() }))
 
 const base = () => `http://127.0.0.1:${process.env.PORT || 5190}`
 
@@ -443,11 +447,12 @@ function status(e, b) {
     update('runs', e.run_id, { cost_usd: e.cost_done + c })
     throttledEmit(e)
   }
-  const w = b.rate_limits?.five_hour
-  if (typeof w?.used_percentage === 'number' && w.used_percentage !== e.limit) {
-    e.limit = w.used_percentage
-    const value = JSON.stringify({ utilization: w.used_percentage / 100, resetsAt: w.resets_at ? new Date(w.resets_at * 1000).toISOString() : null, at: now() })
-    run('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'rate_limit', value)
+  e.limits ??= {}
+  for (const [win, key] of LIMITS) {
+    const w = b.rate_limits?.[win]
+    if (typeof w?.used_percentage !== 'number' || w.used_percentage === e.limits[win]) continue
+    e.limits[win] = w.used_percentage
+    saveLimit(key, w.used_percentage / 100, w.resets_at ? new Date(w.resets_at * 1000).toISOString() : null)
   }
   const a = getAgent(e.agent_id)
   return `Agent Office: ${a?.name || e.kind}, run ${e.run_id}${e.task_id ? `, task ${e.task_id}` : ''}`
