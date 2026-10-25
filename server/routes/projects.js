@@ -20,6 +20,7 @@ const SETTINGS = {
   protected_paths: isStrs,
   autonomy: count(1, 1),
   plan_approval_small: v => typeof v === 'boolean',
+  github_issues: v => typeof v === 'boolean',
   digest_hour: v => v === null || count(0, 23)(v),
   project_daily_token_budget: count(0),
   project_daily_cost_budget: v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0),
