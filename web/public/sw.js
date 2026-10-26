@@ -1,6 +1,6 @@
 // Offline shell: index.html, its hashed bundles and the font, so the app opens when the office is out of reach.
 // shortcut: bundles of older builds stay in the cache (a few hundred KB each); bump SHELL to clear them if it ever matters.
-const SHELL = 'shell-v1'
+const SHELL = 'shell-v2'
 const STATIC = /^\/(assets|fonts|clawd)\//
 
 self.addEventListener('install', e => {
