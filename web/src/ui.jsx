@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { clawdUrl } from './clawd.js'
 
 export function Button({ variant = 'default', small, className = '', ...p }) {
   return <button type="button" className={`btn ${variant} ${small ? 'small' : ''} ${className}`} {...p} />
@@ -98,7 +99,18 @@ export function useAction() {
 
 export const ErrorText = ({ error }) => error ? <p className="error" role="alert">{error}</p> : null
 
-export const Empty = ({ children }) => <p className="empty">{children}</p>
+// With a Clawd set it is a full empty state (one line, one thing to do); without, a quiet line inside a list.
+export const Empty = ({ children, set, title, action }) => set ? (
+  <div className="empty-state">
+    <img src={clawdUrl(set)} alt="" width="144" height="48" />
+    {title && <h2>{title}</h2>}
+    <p>{children}</p>
+    {action && <div className="actions">{action}</div>}
+  </div>
+) : <p className="empty">{children}</p>
+
+// Placeholder rows while a list loads, so a screen never flashes empty.
+export const Skeleton = ({ n = 3 }) => <div className="list" aria-busy="true">{Array.from({ length: n }, (_, i) => <span key={i} className="skel card" />)}</div>
 
 export const label = s => (s || '').replace(/_/g, ' ')
 

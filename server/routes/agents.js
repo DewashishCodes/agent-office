@@ -48,12 +48,18 @@ app.post('/api/projects/:id/floors', (req, res) => {
   res.json(hired)
 })
 
+// The live run's last event, and whether it waits on the owner (the floor switcher pulses for that floor).
+function running(agentId) {
+  const r = get("SELECT last_event, pending_permission FROM runs WHERE agent_id = ? AND status = 'running' ORDER BY id DESC", agentId)
+  return { last_event: r?.last_event ?? null, asking: !!r?.pending_permission?.length }
+}
+
 app.get('/api/projects/:id/agents', (req, res) => {
   res.json(activeAgents(project(req).id).map(a => ({
     ...a,
     tokens_today: tokensToday(a.id),
     current_task: get("SELECT title FROM tasks WHERE agent_id = ? AND status = 'in_progress' ORDER BY id DESC", a.id)?.title ?? null,
-    last_event: get("SELECT last_event FROM runs WHERE agent_id = ? AND status = 'running' ORDER BY id DESC", a.id)?.last_event ?? null,
+    ...running(a.id),
   })))
 })
 

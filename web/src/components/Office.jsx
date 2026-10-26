@@ -68,9 +68,11 @@ export default function Office({ pid, agents, crew, selected, onSelect, floor, i
   })
 
   const last = crew?.[crew.length - 1]
+  const busy = agents.filter(a => a.run?.status === 'running').length
   return (
-    <div className="room" ref={room} style={floor && { '--floor': floor.color }}>
+    <div className="room" ref={room} data-sky={sky()} style={floor && { '--floor': floor.color }}>
       <div className="room-wall">
+        <span className={`live-badge ${busy ? 'on' : ''}`}><i aria-hidden="true" />{busy ? `${busy} working` : 'Live'}</span>
         <span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" /><span className="window" aria-hidden="true" />
         <span className="sign" aria-hidden="true">{floor && floor.key !== 'tech' ? `${floor.name} floor` : 'CREW HQ'}</span>
         <Rack services={services} onOpen={onServices} />
@@ -98,6 +100,9 @@ export default function Office({ pid, agents, crew, selected, onSelect, floor, i
     </div>
   )
 }
+
+// What the windows show follows the real clock.
+const sky = () => { const h = new Date().getHours(); return h < 6 || h >= 20 ? 'night' : h < 9 ? 'dawn' : h < 17 ? 'day' : 'dusk' }
 
 // A server rack on the wall: one lit unit per running service. Click for logs, stop and restart.
 function Rack({ services, onOpen }) {

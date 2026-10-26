@@ -18,26 +18,38 @@
 }
 .hq > section, .hq > nav { min-width: 0; min-height: 0; }
 .hq-space { display: flex; flex-direction: column; }
-.hq-term, .hq-kanban, .hq-orders, .hq-config { border-radius: 12px; }
+.hq-term, .hq-kanban, .hq-orders, .hq-config { border-radius: var(--radius); }
 
-/* The room. Always night-shift dark: it sits next to the terminal. */
+/* The room: the live feed of the office. Always night-shift dark inside; the windows follow the real clock. */
 .room {
   --s: .66; --ink: #1b1916; --paper: #f4efe3;
-  position: relative; flex: 1; min-height: 0; overflow: auto; border-radius: 12px; color: var(--paper);
-  border: 1px solid #3a332b;
+  --sky-a: #23314a; --sky-b: #31476b;
+  position: relative; flex: 1; min-height: 0; overflow: auto; border-radius: var(--radius); color: var(--paper);
+  box-shadow: var(--edge), inset 0 0 80px rgb(0 0 0 / .35);
   background:
     linear-gradient(#2a241f 0 44px, #3a2d24 44px 48px, transparent 48px),
     repeating-linear-gradient(90deg, transparent 0 95px, rgb(0 0 0 / .18) 95px 96px),
     repeating-linear-gradient(0deg, #3f3026 0 23px, #382a21 23px 24px);
 }
+.room[data-sky="dawn"] { --sky-a: #4b3f6b; --sky-b: #e2906a; }
+.room[data-sky="day"] { --sky-a: #8fcdf0; --sky-b: #d6eef9; }
+.room[data-sky="dusk"] { --sky-a: #3b3558; --sky-b: #d96f5a; }
+.room.skel-room { min-height: 240px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; box-shadow: none; }
 .room-wall { position: absolute; inset: 0 0 auto 0; height: 44px; display: flex; align-items: center; gap: 22px; padding: 0 16px; }
 .room-wall > * { pointer-events: none; }
 /* A narrowed room (splitter) drops windows before the wall row overflows. */
 .room { container-type: inline-size; }
-@container (max-width: 640px) { .window:nth-child(n + 2) { display: none; } }
+@container (max-width: 640px) { .window:nth-child(n + 3) { display: none; } }
 @container (max-width: 470px) { .window, .sign { display: none; } }
-.window { flex: 0 0 auto; width: 48px; height: 26px; border: 3px solid #5a4c3f; background: linear-gradient(180deg, #23314a, #31476b); box-shadow: inset 26px 0 0 -23px #5a4c3f; }
+.window { flex: 0 0 auto; width: 48px; height: 26px; border: 3px solid #5a4c3f; background: linear-gradient(180deg, var(--sky-a), var(--sky-b)); box-shadow: inset 26px 0 0 -23px #5a4c3f; }
 .sign { margin-left: auto; white-space: nowrap; font: 11px/1 "Silkscreen", var(--mono); letter-spacing: .12em; color: #d97757; padding: 5px 8px; border: 2px solid #d97757; background: #1f1a16; }
+/* Live badge in the corner of the feed: a steady dot, breathing while anyone works. */
+.live-badge { display: inline-flex; align-items: center; gap: 6px; margin-right: -8px; padding: 3px 8px; border-radius: 99px; font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #c9c1b2; background: rgb(0 0 0 / .35); }
+.live-badge i { width: 6px; height: 6px; border-radius: 50%; background: #8a8378; }
+.live-badge.on { color: #f1ece1; }
+.live-badge.on i { background: #5fc46a; box-shadow: 0 0 6px #5fc46a; animation: pulse 1.6s ease-in-out infinite; }
+/* The picked desk holds the light; the others step back. */
+.room:has(.station.selected) .station:not(.selected) .sprite-box, .room:has(.station.selected) .station:not(.selected) .desk { filter: brightness(.72); transition: filter .25s; }
 
 .floor-desks {
   display: grid; justify-content: center; align-content: start; gap: 22px 18px;
@@ -134,27 +146,26 @@
 .hq-term .tile .terminal, .hq-term .tile .transcript { flex: 1; height: auto; min-height: 0; }
 .hq-term .tile .meter { display: none; }
 
-/* Config and vault: 2x2 tiles. */
-.hq-config { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 8px; }
-.hq-config .tool { min-height: 0; }
-.hq-config > :last-child:nth-child(odd) { grid-column: span 2; }
+/* Config and vault: a quiet list of places, not a grid of boxes. */
+.hq-config { display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--surface); box-shadow: var(--edge); overflow: auto; }
 .tool {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 64px;
-  font: inherit; font-size: 12.5px; font-weight: 650; color: var(--text); text-decoration: none; cursor: pointer;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px;
+  font: inherit; font-size: 13px; font-weight: 550; color: var(--muted); text-decoration: none; cursor: pointer;
+  background: none; border: 0; border-radius: var(--radius-s); transition: background .15s, color .15s;
 }
-.tool:hover { border-color: var(--accent); color: var(--accent); }
+.tool:hover { background: var(--surface-2); color: var(--text); }
 .tool svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 
-/* Kanban: three boxes. */
+/* Kanban: three lanes. */
 .hq-kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.lane { display: flex; flex-direction: column; min-height: 0; padding: 10px; border-radius: 12px; color: inherit; text-decoration: none; background: var(--surface); border: 1px solid var(--border); }
-.lane:hover { border-color: var(--accent); }
-.lane-head { display: flex; gap: 8px; justify-content: space-between; white-space: nowrap; margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.lane { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px; border-radius: var(--radius); color: inherit; text-decoration: none; background: var(--surface); box-shadow: var(--edge); transition: transform .15s var(--ease), box-shadow .15s; }
+.lane:hover { transform: translateY(-1px); box-shadow: var(--edge), 0 8px 20px rgb(0 0 0 / .2); }
+.lane-head { display: flex; gap: 8px; justify-content: space-between; white-space: nowrap; margin-bottom: 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.lane-head .n { font: 500 11px var(--mono); opacity: 1; }
 .l-doing .lane-head { color: var(--accent); }
 .l-check .lane-head { color: var(--warn); }
 .lane-cards { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
-.kcard { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 7px; background: var(--surface-2); font-size: 13px; border-left: 3px solid var(--border); }
+.kcard { display: flex; flex-direction: column; gap: 1px; padding: 6px 9px; border-radius: 8px; background: var(--surface-2); font-size: 13px; border-left: 3px solid var(--surface-3); }
 .l-doing .kcard { border-left-color: var(--accent); }
 .l-check .kcard { border-left-color: var(--warn); }
 .kcard.blocked { border-left-color: var(--err); }
@@ -162,13 +173,13 @@
 .lane-empty { font-size: 13px; color: var(--muted); padding: 4px 2px; list-style: none; }
 
 /* Order section: open orders with progress, what needs the owner, the order bar. */
-.hq-orders { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); }
+.hq-orders { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--surface); box-shadow: var(--edge); }
 .orders-head { display: flex; align-items: center; gap: 8px; }
 .orders-head h2 { flex: 1; font-size: 14px; }
 .needs-btn { min-height: 30px; padding: 0 10px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; background: var(--err); color: var(--surface); }
 .needs-btn.calm { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .order-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-.welcome { gap: 6px; padding: 10px 12px; font-size: 13.5px; border-color: var(--accent); }
+.welcome { gap: 6px; padding: 10px 12px; font-size: 13.5px; box-shadow: var(--edge), inset 3px 0 0 var(--accent); }
 .welcome p { margin: 0; }
 .examples { display: flex; flex-wrap: wrap; gap: 6px; }
 .examples .chip { min-height: 32px; padding: 4px 12px; border-radius: 99px; font: inherit; font-size: 13px; text-align: left; color: var(--text); background: var(--surface-2); border: 1px dashed var(--accent); cursor: pointer; }
@@ -203,10 +214,9 @@
   .hq-orders { order: 1; }
   .hq-kanban { order: 2; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .hq-kanban .lane { flex: 0 0 78%; scroll-snap-align: start; max-height: 260px; }
-  .hq-config { order: 3; grid-template-columns: repeat(5, 1fr); }
-  .hq-config .tool { min-height: 64px; }
-  .hq-config > :last-child:nth-child(odd) { grid-column: auto; }
-  .window:nth-child(n + 3) { display: none; }
+  .hq-config { order: 3; flex-direction: row; justify-content: space-around; padding: 4px; }
+  .hq-config .tool { flex: 1; flex-direction: column; gap: 4px; min-height: 56px; padding: 6px 0; font-size: 11px; }
+  .window:nth-child(n + 4) { display: none; }
 }
 .lane-done { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--ok); }
 /* An open row menu must not be clipped by the scrolling list. */
@@ -241,7 +251,7 @@
 .svc-dot.stopped, .svc-dot.exited { background: var(--muted); box-shadow: none; }
 .svc-dot.exited { background: var(--err); }
 .svc-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
-.svc-row.on { border-color: var(--accent); }
+.svc-row.on { box-shadow: var(--edge), 0 0 0 2px var(--accent); }
 .svc-pick { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .svc-log { height: 320px; }
 /* Support replies need room to read: the bottom row grows while the bar is in Support mode. */
@@ -262,29 +272,32 @@
   .s-r2::after { width: 40px; height: 3px; }
 }
 
-/* Agent switcher above the terminal, the layout menu at its end. */
-.term-strip { display: flex; align-items: center; gap: 8px; }
-.strip-tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-/* The right edge fades so a clipped floor or agent reads as "scroll for more". */
-.strip-tabs { padding-right: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+/* Above the terminal: which agent is on screen (the desks pick too), the layout menu at the end. */
+.term-strip { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.agent-pick { display: inline-flex; align-items: center; gap: 8px; padding-left: 10px; border-radius: 99px; background: var(--surface-2); }
+.agent-pick select { width: auto; min-height: 30px; padding: 0 26px 0 2px; border: 0; background: transparent; font-weight: 600; font-size: 13px; box-shadow: none; }
+.agent-pick .light { box-shadow: none; border-radius: 50%; }
+.agent-pick.l-ask { box-shadow: 0 0 0 1px var(--err); }
+
+/* Floor switcher: a segmented control, each floor with its colour chip. */
+.strip-tabs { display: flex; gap: 2px; padding: 2px; border-radius: 99px; background: var(--surface-2); overflow-x: auto; scrollbar-width: none; }
 .strip-tab {
-  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
-  font: 12px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
-  color: var(--muted); background: var(--surface-2); border: 2px solid transparent; border-radius: 6px;
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 11px;
+  font: 500 12.5px/1 var(--font); white-space: nowrap; cursor: pointer;
+  color: var(--muted); background: none; border: 0; border-radius: 99px; transition: background .15s, color .15s;
 }
 .strip-tab:hover { color: var(--text); }
-.strip-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--accent); }
-.strip-tab .light { box-shadow: none; }
+.strip-tab[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
 
 /* Needs you: anything waiting on the owner pulses until answered. */
 @keyframes needs { 0% { box-shadow: 0 0 0 0 rgb(255 107 94 / .65); } 70%, 100% { box-shadow: 0 0 0 9px rgb(255 107 94 / 0); } }
 .needs-btn:not(.calm), .tab .count, .tag-count, .strip-tab.l-ask { animation: needs 1.6s ease-out infinite; }
-.strip-tab.l-ask { border-color: var(--err); }
+.strip-tab.l-ask { color: var(--err); }
 .station.l-ask::after {
   content: ""; position: absolute; left: -10px; right: -10px; top: 18px; bottom: -6px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgb(255 107 94 / .4), transparent); animation: blink 1.6s ease-in-out infinite;
 }
-@media (prefers-reduced-motion: reduce) { .needs-btn, .tab .count, .tag-count, .strip-tab, .station.l-ask::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .needs-btn, .tab .count, .tag-count, .strip-tab, .station.l-ask::after, .live-badge i, .skel-room { animation: none; } }
 
 /* Day shift: daylight through the windows, a lighter wall. The floor stays dark so the desks read the same. */
 [data-theme="day"] .room {
@@ -293,27 +306,27 @@
     repeating-linear-gradient(90deg, transparent 0 95px, rgb(0 0 0 / .18) 95px 96px),
     repeating-linear-gradient(0deg, #4a3829 0 23px, #43321f 23px 24px);
 }
-[data-theme="day"] .window { border-color: #8a7158; background: linear-gradient(180deg, #8fcdf0, #d6eef9); box-shadow: inset 26px 0 0 -23px #8a7158; }
-[data-theme="day"] .window:first-child { background: radial-gradient(circle at 75% 35%, #ffd66b 0 4px, transparent 5px), linear-gradient(180deg, #8fcdf0, #d6eef9); }
-/* Night: a moon in the first window. */
-.window:first-child { background: radial-gradient(circle at 75% 35%, #f4efe3 0 3px, transparent 4px), linear-gradient(180deg, #23314a, #31476b); }
+[data-theme="day"] .window { border-color: #8a7158; box-shadow: inset 26px 0 0 -23px #8a7158; }
+/* A moon in the first window at night, the sun by day. */
+.room[data-sky="night"] .live-badge + .window { background: radial-gradient(circle at 75% 35%, #f4efe3 0 3px, transparent 4px), linear-gradient(180deg, var(--sky-a), var(--sky-b)); }
+.room[data-sky="day"] .live-badge + .window { background: radial-gradient(circle at 75% 35%, #ffd66b 0 4px, transparent 5px), linear-gradient(180deg, var(--sky-a), var(--sky-b)); }
 
-/* Floors: elevator buttons above the room (and the Command chat), the sign takes the floor's color. */
+/* Floors: the switcher lives in the header (App.jsx); the room's sign takes the floor's colour. */
 .hq-space { gap: 6px; }
-.floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.floor-chip { display: inline-block; width: 8px; height: 8px; background: var(--floor, var(--accent)); box-shadow: 0 0 0 1px rgb(0 0 0 / .4); }
-.floor-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
-.floor-tab[aria-pressed="true"] .floor-chip { background: var(--accent-text); }
+.floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; margin-left: 4px; }
+.floor-chip { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--floor, var(--accent)); }
 .floor-add {
-  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; cursor: pointer;
-  font: 14px/1 var(--pixel); color: var(--muted); background: var(--surface-2); border: 2px dashed var(--border); border-radius: 6px;
+  flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; cursor: pointer;
+  font: 16px/1 var(--font); color: var(--muted); background: none; border: 1px dashed var(--border); border-radius: 50%;
 }
 .floor-add:hover { color: var(--accent); border-color: var(--accent); }
 .room .sign { color: var(--floor, #d97757); border-color: var(--floor, #d97757); }
-.chat-floors { position: sticky; top: 49px; z-index: 3; padding: 6px 0; background: var(--bg); }
-/* Page Down, focus and scrollIntoView stop below the sticky header and floor bar instead of under them. */
-html:has(.chat-floors) { scroll-padding-top: 100px; }
 .floor-bar .strip-tabs { flex: 0 1 auto; }
+/* Phones: the switcher takes its own row under the project name. */
+@media (max-width: 899px) {
+  .top { flex-wrap: wrap; }
+  .top .floor-bar { order: 10; flex-basis: 100%; margin: 2px 0 0; }
+}
 .needs-strip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); min-width: 0; }
 @media (max-width: 899px) {
   .hq.has-needs .room { height: 40vh; min-height: 240px; }

@@ -19,7 +19,7 @@ export default function Activity({ pid }) {
         </select>
       </div>
       <ErrorText error={error} />
-      {rows && !shown.length && <Empty>Nothing logged yet.</Empty>}
+      {rows && !shown.length && <Empty set="idle-look" title="Nothing logged yet">Orders, dispatches, PRs and merges are written here as they happen.</Empty>}
       <ul className="list activity">
         {shown.map(r => (
           <li key={r.id} className="activity-row">

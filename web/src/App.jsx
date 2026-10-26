@@ -13,6 +13,7 @@ import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
 import Activity from './screens/Activity.jsx'
+import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from './components/Floors.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -106,6 +107,8 @@ function Shell({ restarted }) {
   const [detail, reloadDetail] = useData(pid && `/projects/${pid}`,
     ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'run' && ev.data.status !== 'running')))
   const [openInbox] = useData(pid && `/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  // For the floor switcher: which floors are open, and whether an agent there waits on the owner.
+  const [agents] = useData(pid && `/projects/${pid}/agents`, ev => ev.project_id === pid && (ev.type === 'agent' || ev.type === 'run'))
   useEffect(() => {
     if (!openInbox) return
     try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
@@ -157,7 +160,8 @@ function Shell({ restarted }) {
       )}
       <div className="main">
         {project && (
-          <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
+          <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail}
+            floorBar={['home', 'command'].includes(view) && agents && { floors, floor, setFloor, agents }} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
         {project && <NotifyCard />}
@@ -171,8 +175,11 @@ function Shell({ restarted }) {
   )
 }
 
-function Header({ projects, project, detail, onPick, reload }) {
+function Header({ projects, project, detail, onPick, reload, floorBar }) {
   const [run, busy, error] = useAction()
+  const [addFloor, setAddFloor] = useState(false)
+  const [templates] = useData(addFloor ? '/templates' : null)
+  const open = floorBar && openFloors(floorBar.floors, floorBar.agents)
   const pctOf = u => (u == null ? null : Math.round(u <= 1 ? u * 100 : u))
   const pct = pctOf(detail?.rate_limit?.utilization), week = pctOf(detail?.rate_limit_week?.utilization)
   const budget = project.settings?.project_daily_token_budget
@@ -188,6 +195,8 @@ function Header({ projects, project, detail, onPick, reload }) {
         {projects.map(p => <option key={p.id} value={p.id}>{p.repo}</option>)}
         <option value="new">Add or manage projects</option>
       </select>
+      {floorBar && <FloorBar open={open} agents={floorBar.agents} floor={currentFloor(open, floorBar.floor).key} onPick={floorBar.setFloor}
+        onAdd={() => setAddFloor(true)} canAdd={open.length < (floorBar.floors?.length || 0)} />}
       <div className="stats" aria-label="Usage">
         {detail && <Stat className="cost-stat" title="Spent today"><b className="cost">$<Tween n={detail.cost_today || 0} /></b></Stat>}
         {detail && <Stat className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
@@ -206,6 +215,8 @@ function Header({ projects, project, detail, onPick, reload }) {
         <p className="menu-keys muted small"><kbd>/</kbd> message box, <kbd>g</kbd> then <kbd>h</kbd> Home, <kbd>c</kbd> Command, <kbd>n</kbd> Needs you, <kbd>a</kbd> Agents, <kbd>b</kbd> Board</p>
       </More>
       <ErrorText error={error} />
+      {addFloor && <OpenFloorSheet pid={project.id} floors={floorBar.floors} open={open} templates={templates}
+        onOpened={k => { setAddFloor(false); floorBar.setFloor(k) }} onClose={() => setAddFloor(false)} />}
     </header>
   )
 }

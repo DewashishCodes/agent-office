@@ -14,7 +14,7 @@ export default function Shipped({ pid }) {
   const [rows, , error] = useData(`/projects/${pid}/shipped`, on(pid, 'task'))
   if (error) return <ErrorText error={error} />
   if (!rows) return <p className="muted">Loading</p>
-  if (!rows.length) return <Empty>Nothing shipped yet. Merged PRs show up here.</Empty>
+  if (!rows.length) return <Empty set="idle-book" title="Nothing shipped yet">Merged PRs show up here, with what each one cost.</Empty>
   const weeks = Object.entries(Object.groupBy(rows, r => weekOf(r.merged_at))).sort((a, b) => b[0] - a[0]).slice(0, 4)
   const thisWeek = weekOf(new Date().toISOString().slice(0, 19).replace('T', ' '))
   return (
