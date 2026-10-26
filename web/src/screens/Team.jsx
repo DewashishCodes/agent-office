@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, useData, useEvents } from '../api.js'
-import { Button, ConfirmButton, Empty, ErrorText, More, Sheet, StatusDot, initials, tokens, useAction } from '../ui.jsx'
+import { Button, ConfirmButton, Empty, ErrorText, More, Sheet, Skeleton, StatusDot, initials, tokens, useAction } from '../ui.jsx'
 import QuickTask from '../components/QuickTask.jsx'
 import ModelEffort from '../components/ModelEffort.jsx'
 
@@ -26,7 +26,8 @@ export default function Team({ pid, floors, floor }) {
         <Button variant="primary" onClick={() => setAdding(true)}>Add agent</Button>
       </div>
       <ErrorText error={error} />
-      {agents?.length === 0 && <Empty>No agents. Add one from a template.</Empty>}
+      {!agents && !error && <Skeleton />}
+      {agents?.length === 0 && <Empty set="hello" title="No agents yet">Run onboarding from Projects, or add one from a template.</Empty>}
       <ul className="team">
         {agents?.map(a => <AgentCard key={a.id} a={a} lastEvent={a.status === 'working' ? live[a.id] || a.last_event : null} floors={floors} reload={reload} onQuick={() => setQuick(a.name)} />)}
       </ul>

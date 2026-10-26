@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api, on, useData } from '../api.js'
-import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, useAction } from '../ui.jsx'
+import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, Skeleton, useAction } from '../ui.jsx'
 import Working from '../components/Working.jsx'
 import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
@@ -21,7 +21,8 @@ export default function Inbox({ pid, itemId }) {
         <PushButton />
       </div>
       <ErrorText error={error} />
-      {items?.length === 0 && <Empty>All clear. Nothing needs you right now.</Empty>}
+      {!items && !error && <Skeleton n={2} />}
+      {items?.length === 0 && <Empty set="idle-coffee" title="All clear">Plans to approve, PRs to merge, questions and permission requests land here.</Empty>}
       <ul className="list">{items?.map(i => <Item key={i.id} i={i} linked={i.id === itemId} />)}</ul>
       <Button variant="ghost" aria-expanded={history} onClick={() => setHistory(h => !h)}>{history ? 'Hide history' : 'Show history'}</Button>
       {history && (

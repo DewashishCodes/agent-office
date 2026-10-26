@@ -3,17 +3,15 @@ import { api, on, useData, useEvents } from '../api.js'
 import { Ago, Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import { Md } from '../components/Transcript.jsx'
 import Working from '../components/Working.jsx'
-import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
+import { currentFloor, openFloors } from '../components/Floors.jsx'
 
 // The open chat per project and floor, kept across reloads.
 const storedChat = slot => { try { return Number(localStorage.getItem(`crew.chat.${slot}`)) || null } catch { return null } }
 // Phones keep Enter for new lines; the Send button sends.
 const enterSends = !matchMedia('(pointer: coarse)').matches
 
-export default function Command({ pid, running, floors, floor: saved, setFloor }) {
+export default function Command({ pid, running, floors, floor: saved }) {
   const [agents] = useData(`/projects/${pid}/agents`, on(pid, 'agent'))
-  const [templates] = useData('/templates')
-  const [adding, setAdding] = useState(false)
   const open = openFloors(floors, agents)
   const floor = currentFloor(open, saved)
   const lead = agents?.find(a => a.role === 'orchestrator' && a.floor === floor.key)
@@ -80,11 +78,6 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
     <div className="chat-shell">
       <aside className="chat-side">{list}</aside>
     <section className="chat" style={{ '--floor': floor.color }}>
-      {open.length > 0 && (
-        <div className="chat-floors">
-          <FloorBar open={open} agents={agents} floor={floor.key} onPick={setFloor} onAdd={() => setAdding(true)} canAdd={open.length < (floors?.length || 0)} />
-        </div>
-      )}
       <div className="chat-head">
         <Button small variant="ghost" className="chats-btn" onClick={() => setListOpen(true)}>Chats</Button>
         <h1 className="grow clip">{title}</h1>
@@ -124,8 +117,6 @@ export default function Command({ pid, running, floors, floor: saved, setFloor }
       )}
       <ErrorText error={sendError} />
       {listOpen && <Sheet title="Chats" onClose={() => setListOpen(false)}>{list}</Sheet>}
-      {adding && <OpenFloorSheet pid={pid} floors={floors} open={open} templates={templates}
-        onOpened={k => { setAdding(false); setFloor(k) }} onClose={() => setAdding(false)} />}
     </section>
     </div>
   )

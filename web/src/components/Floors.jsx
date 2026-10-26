@@ -11,13 +11,14 @@ export function openFloors(floors, agents) {
 // The saved floor if it is open here, else Tech.
 export const currentFloor = (open, floor) => open.find(f => f.key === floor) || open[0] || { key: 'tech', name: 'Tech', color: '#d97757' }
 
-// Elevator buttons: one per open floor, red pulse when someone there waits for the owner, + opens a new floor.
+// Floor switcher in the header: one segment per open floor, red pulse when someone there waits for the owner,
+// + opens a new floor. Agents come from the wall (with run) or the agents list (with asking).
 export function FloorBar({ open, agents, floor, onPick, onAdd, canAdd }) {
   return (
     <div className="floor-bar">
       <div className="strip-tabs" role="group" aria-label="Floors">
         {open.map(f => {
-          const ask = (agents || []).some(a => a.floor === f.key && a.run && light(a) === 'ask')
+          const ask = (agents || []).some(a => a.floor === f.key && (a.asking || (a.run && light(a) === 'ask')))
           return (
             <button key={f.key} type="button" aria-pressed={f.key === floor} className={`strip-tab floor-tab ${ask ? 'l-ask' : ''}`}
               style={{ '--floor': f.color }} onClick={() => onPick(f.key)} title={ask ? `Someone on ${f.name} is waiting for you` : f.blurb}>

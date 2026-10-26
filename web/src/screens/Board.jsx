@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, on, useData } from '../api.js'
-import { Ago, Elapsed, Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
+import { Ago, Elapsed, Badge, Button, ConfirmButton, Empty, ErrorText, Sheet, Skeleton, ghUrl, orderStatus, taskStatus, tokens, useAction } from '../ui.jsx'
 import TaskFacts from '../components/TaskFacts.jsx'
 import RetryNote from '../components/RetryNote.jsx'
 import Shipped from '../components/Shipped.jsx'
@@ -71,8 +71,9 @@ export default function Board({ pid, project, orderId }) {
           <div className="list">{blocked.map(card)}</div>
         </section>
       )}
+      {!tasks && <Skeleton />}
       <div className="board-list stack">
-        {tasks && !groups.length && <Empty>{showDone ? 'No tasks yet.' : 'Nothing in flight. Done tasks are hidden.'}</Empty>}
+        {tasks && !groups.length && <Empty set="idle-doze" title="Nothing in flight">{showDone ? 'No tasks yet. Give an order and the plan lands here as tasks.' : 'Done tasks are hidden. Give an order and the plan lands here as tasks.'}</Empty>}
         {groups.map(({ o, list }) => (
           <details key={o.id} className="group" open>
             <summary>
@@ -91,7 +92,10 @@ export default function Board({ pid, project, orderId }) {
             {list.map(card)}
           </section>
         ))}
-        {tasks && !COLS.some(([, , f]) => shown.some(f)) && <Empty>{blocked.length ? 'Nothing else in flight.' : 'Nothing in flight.'}</Empty>}
+        {tasks && !COLS.some(([, , f]) => shown.some(f)) && (
+          <Empty set="idle-doze" title={blocked.length ? 'Nothing else in flight' : 'Nothing in flight'}
+            action={<a className="btn primary small" href="#/command">Give an order</a>}>The desks are quiet. An approved plan shows up here as tasks.</Empty>
+        )}
       </div>
       {openId && <TaskSheet id={openId} pid={pid} repo={project.repo} onClose={() => setOpenId(null)} />}
     </section>

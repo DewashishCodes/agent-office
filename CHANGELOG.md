@@ -2,7 +2,18 @@
 
 Agent behaviour follows its prompts, so prompt changes are listed here too: they change what the crew does without any code you would notice. Upgrade notes say what to do after pulling.
 
-## Unreleased: phase 4, polish
+## Unreleased: visual overhaul
+
+Upgrade notes:
+- Rebuild and restart (`npm run build`, then `npm start`). The first load may still show the previous build; a reload picks up the new one.
+
+Changes:
+- A new look: Inter and JetBrains Mono (self-hosted, OFL), a near-black room with Clawd orange as the only accent, panes separated by depth instead of borders, usage in the header as a stat cluster.
+- The floor switcher sits in the header on Home and Command; the agent tabs above the terminal are one picker, the desks still select.
+- The office room shows a live badge and windows that follow the clock; the picked desk keeps the light.
+- Empty screens show a Clawd, one line and one action; lists show placeholder rows while they load; screens cross-fade on navigation. All motion stops under prefers-reduced-motion.
+
+## Phase 4, polish
 
 Upgrade notes:
 - Every browser and phone has to log in again once: the login cookie is now a session of its own instead of a hash of the owner token.

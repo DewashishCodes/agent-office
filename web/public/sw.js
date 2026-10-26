@@ -1,6 +1,6 @@
 // Offline shell: index.html, its hashed bundles and the font, so the app opens when the office is out of reach.
 // shortcut: bundles of older builds stay in the cache (a few hundred KB each); bump SHELL to clear them if it ever matters.
-const SHELL = 'shell-v1'
+const SHELL = 'shell-v2'
 const STATIC = /^\/(assets|fonts|clawd)\//
 
 self.addEventListener('install', e => {
@@ -12,7 +12,7 @@ self.addEventListener('install', e => {
       const res = await fetch('/', { cache: 'no-store' })
       const html = await res.clone().text()
       await c.put('/', res)
-      await c.addAll([...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m => m[1]).concat('/fonts/silkscreen-latin.woff2', '/favicon.svg', '/icon.svg'))
+      await c.addAll([...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m => m[1]).concat('/fonts/silkscreen-latin.woff2', '/fonts/inter-latin.woff2', '/fonts/jetbrains-mono-latin.woff2', '/favicon.svg', '/icon.svg'))
     } catch {}
   })())
 })

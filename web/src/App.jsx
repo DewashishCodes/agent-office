@@ -1,4 +1,5 @@
-import { Component, useEffect, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { api, on, setAuthHandler, useData } from './api.js'
 import { Button, ConfirmButton, ErrorText, More, tokens, useAction } from './ui.jsx'
 import Login from './screens/Login.jsx'
@@ -12,6 +13,7 @@ import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
 import Activity from './screens/Activity.jsx'
+import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from './components/Floors.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -70,7 +72,9 @@ function Shell({ restarted }) {
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem('crew.nav') === 'open' } catch { return false } })
   const toggleNav = () => setNavOpen(o => { try { localStorage.setItem('crew.nav', o ? 'min' : 'open') } catch {} return !o })
   useEffect(() => {
-    const f = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
+    // Screens cross-fade through the View Transitions API where the browser has it; the CSS is on ::view-transition-*.
+    const go = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
+    const f = () => document.startViewTransition ? document.startViewTransition(() => flushSync(go)) : go()
     addEventListener('hashchange', f)
     return () => removeEventListener('hashchange', f)
   }, [])
@@ -103,6 +107,8 @@ function Shell({ restarted }) {
   const [detail, reloadDetail] = useData(pid && `/projects/${pid}`,
     ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'run' && ev.data.status !== 'running')))
   const [openInbox] = useData(pid && `/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  // For the floor switcher: which floors are open, and whether an agent there waits on the owner.
+  const [agents] = useData(pid && `/projects/${pid}/agents`, ev => ev.project_id === pid && (ev.type === 'agent' || ev.type === 'run'))
   useEffect(() => {
     if (!openInbox) return
     try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
@@ -154,7 +160,8 @@ function Shell({ restarted }) {
       )}
       <div className="main">
         {project && (
-          <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
+          <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail}
+            floorBar={['home', 'command'].includes(view) && agents && { floors, floor, setFloor, agents }} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
         {project && <NotifyCard />}
@@ -168,8 +175,11 @@ function Shell({ restarted }) {
   )
 }
 
-function Header({ projects, project, detail, onPick, reload }) {
+function Header({ projects, project, detail, onPick, reload, floorBar }) {
   const [run, busy, error] = useAction()
+  const [addFloor, setAddFloor] = useState(false)
+  const [templates] = useData(addFloor ? '/templates' : null)
+  const open = floorBar && openFloors(floorBar.floors, floorBar.agents)
   const pctOf = u => (u == null ? null : Math.round(u <= 1 ? u * 100 : u))
   const pct = pctOf(detail?.rate_limit?.utilization), week = pctOf(detail?.rate_limit_week?.utilization)
   const budget = project.settings?.project_daily_token_budget
@@ -185,12 +195,14 @@ function Header({ projects, project, detail, onPick, reload }) {
         {projects.map(p => <option key={p.id} value={p.id}>{p.repo}</option>)}
         <option value="new">Add or manage projects</option>
       </select>
+      {floorBar && <FloorBar open={open} agents={floorBar.agents} floor={currentFloor(open, floorBar.floor).key} onPick={floorBar.setFloor}
+        onAdd={() => setAddFloor(true)} canAdd={open.length < (floorBar.floors?.length || 0)} />}
       <div className="stats" aria-label="Usage">
-        {detail && <span className="cost" title="Spent today">${(detail.cost_today || 0).toFixed(2)}</span>}
-        {detail && <Gauge className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
-          pct={budget ? (detail.tokens_today / budget) * 100 : null}>{tokens(detail.tokens_today)}{budget ? ` / ${tokens(budget)}` : ''} tok</Gauge>}
-        {pct != null && <Gauge title="Five hour rate limit used" pct={pct}>5h {pct}%</Gauge>}
-        {week != null && <Gauge className="week" title="Weekly limit used" pct={week}>7d {week}%</Gauge>}
+        {detail && <Stat className="cost-stat" title="Spent today"><b className="cost">$<Tween n={detail.cost_today || 0} /></b></Stat>}
+        {detail && <Stat className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
+          pct={budget ? (detail.tokens_today / budget) * 100 : null}><b>{tokens(detail.tokens_today)}</b>{budget ? ` / ${tokens(budget)}` : ''} tok</Stat>}
+        {pct != null && <Stat title="Five hour rate limit used" pct={pct}>5h <b>{pct}%</b></Stat>}
+        {week != null && <Stat className="week" title="Weekly limit used" pct={week}>7d <b>{week}%</b></Stat>}
       </div>
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
@@ -203,6 +215,8 @@ function Header({ projects, project, detail, onPick, reload }) {
         <p className="menu-keys muted small"><kbd>/</kbd> message box, <kbd>g</kbd> then <kbd>h</kbd> Home, <kbd>c</kbd> Command, <kbd>n</kbd> Needs you, <kbd>a</kbd> Agents, <kbd>b</kbd> Board</p>
       </More>
       <ErrorText error={error} />
+      {addFloor && <OpenFloorSheet pid={project.id} floors={floorBar.floors} open={open} templates={templates}
+        onOpened={k => { setAddFloor(false); floorBar.setFloor(k) }} onClose={() => setAddFloor(false)} />}
     </header>
   )
 }
@@ -214,20 +228,40 @@ function useTheme() {
     const el = document.documentElement
     if (day) el.dataset.theme = 'day'
     else delete el.dataset.theme
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', day ? '#f4efe3' : '#16130f')
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', day ? '#f3eee4' : '#0f0e0c')
     try { localStorage.setItem('crew.theme', day ? 'day' : 'night') } catch {}
   }, [day])
   return [day, () => setDay(d => !d)]
 }
 
-function Gauge({ pct, title, className = '', children }) {
+function Stat({ pct, title, className = '', children }) {
   const p = pct == null ? null : Math.min(100, Math.round(pct))
   return (
-    <span className={`gauge ${className} ${p >= 80 ? 'hot' : ''}`} title={title}>
+    <span className={`stat ${className} ${p >= 80 ? 'hot' : ''}`} title={title}>
       <span>{children}</span>
       {p != null && <i aria-hidden="true"><b style={{ width: `${p}%` }} /></i>}
     </span>
   )
+}
+
+// A dollar amount that counts from its last value to the new one instead of jumping.
+function Tween({ n }) {
+  const [shown, setShown] = useState(n)
+  const from = useRef(n)
+  useEffect(() => {
+    const a = from.current, b = n, t0 = performance.now()
+    if (a === b || matchMedia('(prefers-reduced-motion: reduce)').matches) { from.current = b; setShown(b); return }
+    let raf
+    const step = t => {
+      const k = Math.min(1, (t - t0) / 500), e = 1 - (1 - k) ** 3
+      setShown(a + (b - a) * e)
+      if (k < 1) raf = requestAnimationFrame(step)
+      else from.current = b
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [n])
+  return shown.toFixed(2)
 }
 
 function Paused({ pid, reload }) {

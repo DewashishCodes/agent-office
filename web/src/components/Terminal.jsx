@@ -6,8 +6,8 @@ import { api } from '../api.js'
 import Transcript from './Transcript.jsx'
 
 const THEME = {
-  background: '#141413', foreground: '#e8e6dc', cursor: '#d97757', selectionBackground: '#4a4a46',
-  black: '#141413', red: '#e5534b', green: '#6bc46d', yellow: '#e0af68', blue: '#6aa8f0', magenta: '#c49af0', cyan: '#5fc4c4', white: '#e8e6dc',
+  background: '#0c0c0b', foreground: '#e8e6dc', cursor: '#e07a52', selectionBackground: '#4a4a46',
+  black: '#0c0c0b', red: '#e5534b', green: '#6bc46d', yellow: '#e0af68', blue: '#6aa8f0', magenta: '#c49af0', cyan: '#5fc4c4', white: '#e8e6dc',
   brightBlack: '#7a7a74', brightRed: '#ff7b72', brightGreen: '#8ddb8c', brightYellow: '#f2cc60', brightBlue: '#8cc0ff', brightMagenta: '#d2a8ff', brightCyan: '#7ee0e0', brightWhite: '#ffffff',
 }
 // Cell width per px of font size in a monospace face; used to scale a watcher to the terminal's real width.
@@ -54,7 +54,7 @@ function Live({ id, src, drive, interactive, className }) {
   keys.current = interactive
 
   useEffect(() => {
-    const t = new XTerm({ theme: THEME, fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace', fontSize: 13, scrollback: 5000, cursorBlink: false, allowProposedApi: false })
+    const t = new XTerm({ theme: THEME, fontFamily: '"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace', fontSize: 13, scrollback: 5000, cursorBlink: false, allowProposedApi: false })
     const fit = new FitAddon()
     t.loadAddon(fit)
     t.open(box.current)

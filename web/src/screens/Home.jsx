@@ -4,9 +4,10 @@ import { Badge, Button, ConfirmButton, Empty, ErrorText, More, Sheet, orderStatu
 import { Item, PushButton } from './Inbox.jsx'
 import { Tile } from '../components/AgentTile.jsx'
 import { PlanCard } from './Command.jsx'
-import Office, { CrewThread, light } from '../components/Office.jsx'
+import Office, { CrewThread } from '../components/Office.jsx'
 import QuickTask from '../components/QuickTask.jsx'
-import { FloorBar, OpenFloorSheet, currentFloor, openFloors } from '../components/Floors.jsx'
+import { currentFloor, openFloors } from '../components/Floors.jsx'
+import { light } from '../components/Office.jsx'
 import Settings from '../components/Settings.jsx'
 import { SupportThread, ServiceChips, ServicesSheetBody } from '../components/Support.jsx'
 import '../office.css'
@@ -83,7 +84,7 @@ function Splitter({ k, box, set, label }) {
 
 // Home is one screen: the agent space with the selected agent's terminal beside it, and along the bottom
 // config and vault, the kanban and the order section.
-export default function Home({ pid, project, reloadProject, floors, floor: saved, setFloor }) {
+export default function Home({ pid, project, reloadProject, floors, floor: saved }) {
   const wide = useWide()
   const [items] = useData(`/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
   const [wall, , wallError] = useData(`/projects/${pid}/wall`, ev => ev.project_id === pid &&
@@ -96,7 +97,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
     if (ev.type === 'run' && ev.project_id === pid && ev.data.agent_id) setLive(l => ({ ...l, [ev.data.agent_id]: ev.data }))
   })
   const [selected, setSelected] = useState(null)
-  const [sheet, setSheet] = useState(null)   // 'settings' | 'comms' | 'needs' | 'services' | 'floor'
+  const [sheet, setSheet] = useState(null)   // 'settings' | 'comms' | 'needs' | 'services'
   const [quick, setQuick] = useState(null)
 
   const everyone = (wall?.agents || []).map(a => {
@@ -109,7 +110,6 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
   const floor = currentFloor(open, saved)
   const agents = everyone.filter(a => a.floor === floor.key)
   const orders = wall?.orders.filter(o => o.floor === floor.key)
-  const [templates] = useData(sheet === 'floor' ? '/templates' : null)
   // Nothing picked: whoever is busy, else whoever ran last, so the pane does not jump away when a run ends.
   const latest = agents.filter(a => a.run).sort((x, y) => y.run.id - x.run.id)[0]
   const pick = agents.find(a => a.id === selected) || (wide ? agents.find(a => a.run?.status === 'running') || latest || agents[0] : null)
@@ -124,8 +124,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       <section className="hq-space" aria-label="Agent space">
         <ErrorText error={wallError} />
         {!wide && items?.length > 0 && <NeedsStrip items={items} onOpen={() => setSheet('needs')} />}
-        {wall && <FloorBar open={open} agents={everyone} floor={floor.key} onPick={k => { setFloor(k); setSelected(null) }}
-          onAdd={() => setSheet('floor')} canAdd={open.length < (floors?.length || 0)} />}
+        {!wall && !wallError && <div className="room skel-room" aria-busy="true" />}
         {wall && <Office pid={pid} agents={agents} crew={wall.crew} selected={pick?.id} onSelect={setSelected} floor={floor}
           inboxCount={items?.length || 0} onComms={() => setSheet('comms')} services={services} onServices={() => setSheet('services')} />}
       </section>
@@ -133,23 +132,22 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       {wide && (
         <section className="hq-term" aria-label="Terminal">
           <div className="term-strip">
-            <div className="strip-tabs" role="group" aria-label="Agents">
-              {agents.map(a => {
-                const lt = light(a)
-                return (
-                  <button key={a.id} type="button" aria-pressed={pick?.id === a.id} className={`strip-tab l-${lt}`}
-                    onClick={() => setSelected(a.id)} title={lt === 'ask' ? `${a.name} is waiting for your answer` : a.name}>
-                    <i className="light" aria-hidden="true" />{a.name}
-                  </button>
-                )
-              })}
-            </div>
+            {pick && (
+              <label className={`agent-pick l-${light(pick)}`} title={light(pick) === 'ask' ? `${pick.name} is waiting for your answer` : 'Which agent to watch'}>
+                <i className="light" aria-hidden="true" />
+                <span className="sr-only">Agent</span>
+                <select value={pick.id} onChange={e => setSelected(Number(e.target.value))}>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}{light(a) === 'ask' ? ' (waiting for you)' : ''}</option>)}
+                </select>
+              </label>
+            )}
+            <span className="grow" />
             <More label="Layout">
               {PRESETS.map(([name, title, f]) => <Button key={name} variant="ghost" onClick={() => preset(f)}>{name}: {title.toLowerCase()}</Button>)}
               <Button variant="ghost" onClick={() => setLay({ c1: null, c3: null, r2: null })}>Default layout</Button>
             </More>
           </div>
-          {pane || <Empty>No agents yet.</Empty>}
+          {pane || (wall && <Empty set="hello" title="No agents yet">Run onboarding from Projects, or add an agent on Team. Their terminals show here.</Empty>)}
         </section>
       )}
       {wide && <>
@@ -179,8 +177,6 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       {!wide && pick && <Sheet title={pick.name} onClose={() => setSelected(null)}>{pane}</Sheet>}
       {sheet === 'settings' && project && <Settings project={project} reload={reloadProject} onClose={close} />}
       {sheet === 'services' && <Sheet title="Services" onClose={close}><ServicesSheetBody pid={pid} /></Sheet>}
-      {sheet === 'floor' && <OpenFloorSheet pid={pid} floors={floors} open={open} templates={templates}
-        onOpened={k => { close(); setFloor(k) }} onClose={close} />}
       {sheet === 'comms' && <Sheet title="Crew comms" onClose={close}><CrewThread crew={wall?.crew} /></Sheet>}
       {sheet === 'needs' && (
         <Sheet title="Needs you" onClose={close}>
@@ -210,7 +206,7 @@ function NeedsStrip({ items, onOpen }) {
   )
 }
 
-const Glyph = ({ d }) => <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d} /></svg>
+const Glyph = ({ d }) => <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={d} /></svg>
 
 function Tool({ label, d, href, onClick }) {
   return href
