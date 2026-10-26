@@ -313,7 +313,11 @@
 
 /* Floors: the switcher lives in the header (App.jsx); the room's sign takes the floor's colour. */
 .hq-space { gap: 6px; }
-.floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; margin-left: 4px; }
+/* Many open floors scroll inside the switcher; the usage stats keep their width. */
+.floor-bar { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; margin-left: 4px; }
+.floor-bar .strip-tabs { min-width: 0; mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
+.top .stats { flex: 0 0 auto; margin-left: auto; }
+.main { min-width: 0; }
 .floor-chip { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--floor, var(--accent)); }
 .floor-add {
   flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; cursor: pointer;
