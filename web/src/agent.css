@@ -17,11 +17,11 @@
 .transcript.empty-t, .terminal.empty-t { display: grid; place-items: center; color: var(--muted); }
 
 /* Real agent terminal (xterm.js). Always dark: it is Claude Code's own screen. */
-.terminal { display: flex; flex-direction: column; height: 300px; border-radius: 8px; overflow: hidden; background: #141413; }
+.terminal { display: flex; flex-direction: column; height: 300px; border-radius: 10px; overflow: hidden; background: #0c0c0b; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .05); }
 .terminal.empty-t { background: var(--surface-2); }
 .terminal.tall { height: calc(100vh - 300px); min-height: 360px; }
-.terminal .xterm-box { flex: 1; min-height: 0; padding: 4px; }
-.terminal.typing { box-shadow: 0 0 0 2px #d97757; }
+.terminal .xterm-box { flex: 1; min-height: 0; padding: 6px; }
+.terminal.typing { box-shadow: 0 0 0 2px var(--accent); }
 .terminal-note { padding: 4px 10px; font-size: 12px; color: #e8e6dc; background: #2a2a27; }
 .ev { overflow-wrap: anywhere; }
 .ev details > summary { cursor: pointer; list-style: none; min-height: 24px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -34,12 +34,12 @@
 .ev.owner .who { font-weight: 700; color: var(--accent); }
 .ev.note { color: var(--muted); font-style: italic; }
 .ev.ask { color: var(--warn); font-weight: 600; }
-.ev.result { display: flex; justify-content: space-between; gap: 8px; border-top: 1px dashed var(--border); padding-top: 4px; font-size: 12px; font-weight: 600; }
+.ev.result { display: flex; justify-content: space-between; gap: 8px; border-top: 1px dashed var(--line); padding-top: 4px; font-size: 12px; font-weight: 600; }
 .ev.live-text { opacity: .8; }
 .ev code, .crew-feed code, .bubble code { font-family: var(--mono); font-size: 12px; background: var(--surface); padding: 0 4px; border-radius: 4px; }
 pre.code {
-  margin: 4px 0; padding: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-  font: 12px/1.4 var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  margin: 4px 0; padding: 8px 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12px/1.45 var(--mono); background: var(--bg); border-radius: var(--radius-s); box-shadow: var(--edge);
 }
 
 .crew-feed .pill { margin-left: 4px; }

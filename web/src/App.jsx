@@ -1,4 +1,5 @@
-import { Component, useEffect, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { api, on, setAuthHandler, useData } from './api.js'
 import { Button, ConfirmButton, ErrorText, More, tokens, useAction } from './ui.jsx'
 import Login from './screens/Login.jsx'
@@ -70,7 +71,9 @@ function Shell({ restarted }) {
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem('crew.nav') === 'open' } catch { return false } })
   const toggleNav = () => setNavOpen(o => { try { localStorage.setItem('crew.nav', o ? 'min' : 'open') } catch {} return !o })
   useEffect(() => {
-    const f = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
+    // Screens cross-fade through the View Transitions API where the browser has it; the CSS is on ::view-transition-*.
+    const go = () => { setRoute(parseHash()); window.scrollTo(0, 0) }
+    const f = () => document.startViewTransition ? document.startViewTransition(() => flushSync(go)) : go()
     addEventListener('hashchange', f)
     return () => removeEventListener('hashchange', f)
   }, [])
@@ -186,11 +189,11 @@ function Header({ projects, project, detail, onPick, reload }) {
         <option value="new">Add or manage projects</option>
       </select>
       <div className="stats" aria-label="Usage">
-        {detail && <span className="cost" title="Spent today">${(detail.cost_today || 0).toFixed(2)}</span>}
-        {detail && <Gauge className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
-          pct={budget ? (detail.tokens_today / budget) * 100 : null}>{tokens(detail.tokens_today)}{budget ? ` / ${tokens(budget)}` : ''} tok</Gauge>}
-        {pct != null && <Gauge title="Five hour rate limit used" pct={pct}>5h {pct}%</Gauge>}
-        {week != null && <Gauge className="week" title="Weekly limit used" pct={week}>7d {week}%</Gauge>}
+        {detail && <Stat className="cost-stat" title="Spent today"><b className="cost">$<Tween n={detail.cost_today || 0} /></b></Stat>}
+        {detail && <Stat className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
+          pct={budget ? (detail.tokens_today / budget) * 100 : null}><b>{tokens(detail.tokens_today)}</b>{budget ? ` / ${tokens(budget)}` : ''} tok</Stat>}
+        {pct != null && <Stat title="Five hour rate limit used" pct={pct}>5h <b>{pct}%</b></Stat>}
+        {week != null && <Stat className="week" title="Weekly limit used" pct={week}>7d <b>{week}%</b></Stat>}
       </div>
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
@@ -214,20 +217,40 @@ function useTheme() {
     const el = document.documentElement
     if (day) el.dataset.theme = 'day'
     else delete el.dataset.theme
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', day ? '#f4efe3' : '#16130f')
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', day ? '#f3eee4' : '#0f0e0c')
     try { localStorage.setItem('crew.theme', day ? 'day' : 'night') } catch {}
   }, [day])
   return [day, () => setDay(d => !d)]
 }
 
-function Gauge({ pct, title, className = '', children }) {
+function Stat({ pct, title, className = '', children }) {
   const p = pct == null ? null : Math.min(100, Math.round(pct))
   return (
-    <span className={`gauge ${className} ${p >= 80 ? 'hot' : ''}`} title={title}>
+    <span className={`stat ${className} ${p >= 80 ? 'hot' : ''}`} title={title}>
       <span>{children}</span>
       {p != null && <i aria-hidden="true"><b style={{ width: `${p}%` }} /></i>}
     </span>
   )
+}
+
+// A dollar amount that counts from its last value to the new one instead of jumping.
+function Tween({ n }) {
+  const [shown, setShown] = useState(n)
+  const from = useRef(n)
+  useEffect(() => {
+    const a = from.current, b = n, t0 = performance.now()
+    if (a === b || matchMedia('(prefers-reduced-motion: reduce)').matches) { from.current = b; setShown(b); return }
+    let raf
+    const step = t => {
+      const k = Math.min(1, (t - t0) / 500), e = 1 - (1 - k) ** 3
+      setShown(a + (b - a) * e)
+      if (k < 1) raf = requestAnimationFrame(step)
+      else from.current = b
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [n])
+  return shown.toFixed(2)
 }
 
 function Paused({ pid, reload }) {
