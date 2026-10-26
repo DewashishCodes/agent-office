@@ -1,12 +1,18 @@
 # Plan: work docs/IMPROVEMENTS.md in phases
 
-## Progress (updated 2026-10-25)
-- [x] **Phase 1** done on branch `phase1-safety-merge` (20 commits, from `main`).
-- [x] **Phase 2** done on branch `phase2-phone-structure` (38 commits, stacked on phase 1).
-- [x] **Phase 3** done on branch `phase3-product-depth` (75 commits, stacked on phase 2). All three pushed; no PRs opened yet.
-- [ ] **Phase 4** next. Start a `phase4-polish` branch from `phase3-product-depth` (or from `main` once the three are merged).
+## Progress (updated 2026-10-26)
+- [x] **Phase 1** merged to main (PR #1).
+- [x] **Phase 2** merged to main (PR #2).
+- [x] **Phase 3** merged to main (PR #3). CI green on Ubuntu, macOS and Windows (it runs on pushes to main; the pull_request runs did not fire).
+- [x] **Phase 4** done on branch `phase4-polish` from `main`, pushed as PR #4 (with README and CONTRACTS updates). Merge it, then CI runs on main.
 
-State at the end of phase 3: `npm test` 58/58, `npm run build` and `npm run smoke:web` green, no dashes in the diff. CI (`.github/workflows/ci.yml`) has not run yet; it will on the first push or PR, and Linux/macOS may expose Windows-only test assumptions.
+State at the end of phase 4: `npm test` 62/62, `npm run check`, `npm run build` and `npm run smoke:web` green, no dashes in the diff. Checked in the browser at 390px and 1366px on a copy of the database: Home, Command plan edit with the inline refusal, Activity, Needs you, header menu, Settings, and the offline screen with the server stopped.
+
+Phase 4 notes:
+- Not exercised live: A4 hook secret with a real terminal run (the CLI accepts a settings file path; the fake CLI runs json mode), C7 notification actions on a phone, D16 app badge on an installed app.
+- B8: the weekly gauge only appears once a run reports a seven_day window.
+- B9: tags are left to the owner (pushing a tag is outward). `node --check` would not have caught the one split bug found (a spread import); the live route check did.
+- D18 chose plain buttons with aria-pressed over tablist roles.
 
 Known gaps to keep in mind (not blockers):
 - Not exercised end to end with live git/GitHub/claude: C3 Resolve conflicts (rebase run + force-with-lease push) and B4 resume after restart. Unit tests cover the state changes and the one-run `git rebase` allowance.
@@ -68,20 +74,20 @@ Server first, then the cards that consume it.
 - [x] **B4** `recover()`: resume in-progress tasks with the last run's `session_id` and a restart prompt, fall back to fresh as the retry path does. Test with fake CLI.
 - [x] **B7** `GET /api/health`; `data/server.log` with 10 MB rotation; Settings "Download backup" (WAL checkpoint then stream); listed indexes.
 
-## Phase 4: Polish (doc Sprint 4 + remaining P3) [next]
-- [ ] **A3** sessions table, random id cookie, logout deletes, "Log out everywhere"; timing-safe lookup. Test: old cookie gets 401.
-- [ ] **A4** per-run hook secret passed in settings JSON, sent by hook.mjs as a header, required by `/hook/:token`.
-- [ ] **B5** `settings.github_issues` (default true) gating `createIssue`/`setIssueStatus`; Settings toggle.
-- [ ] **C7** push deep links, sw.js Approve/Merge actions, one-time notifications card.
-- [ ] **C8** Tech, Docs, Design first-class; others under "Experimental"; onboarding prompt prefers the three.
-- [ ] **D4** chat id per project+floor in localStorage; open most recent or the one with an unanswered plan.
-- [ ] **D6** plan edit: agent `<select>`, depends_on, files, acceptance; validate with `matchAgent` inline.
-- [ ] **D15** sw.js precache shell + self-hosted Silkscreen woff2; offline screen with cached Needs you.
-- [ ] **D16** `setAppBadge` in App.jsx with feature detection.
-- [ ] **D17** pixel labels to 12px, `.tag` ellipsis. **D12** scroll-padding-top on `.messages`. **D18** aria-pressed buttons, Escape closes More, Sheet restores focus. **D20** keyboard shortcuts.
-- [ ] **B8** weekly rate limit gauge if the status line exposes it (check first; skip if not).
-- [ ] **B9** split server/index.js into route modules, `node --check` step in CI, CHANGELOG.md + tags.
-- [ ] **C9** example order chips; **C10** activity feed screen; **E1** welcome card; **E2** settings copy.
+## Phase 4: Polish (doc Sprint 4 + remaining P3) [done]
+- [x] **A3** sessions table, random id cookie, logout deletes, "Log out everywhere"; timing-safe lookup. Test: old cookie gets 401.
+- [x] **A4** per-run hook secret passed in settings JSON, sent by hook.mjs as a header, required by `/hook/:token`.
+- [x] **B5** `settings.github_issues` (default true) gating `createIssue`/`setIssueStatus`; Settings toggle.
+- [x] **C7** push deep links, sw.js Approve/Merge actions, one-time notifications card.
+- [x] **C8** Tech, Docs, Design first-class; others under "Experimental"; onboarding prompt prefers the three.
+- [x] **D4** chat id per project+floor in localStorage; open most recent or the one with an unanswered plan.
+- [x] **D6** plan edit: agent `<select>`, depends_on, files, acceptance; validate with `matchAgent` inline.
+- [x] **D15** sw.js precache shell + self-hosted Silkscreen woff2; offline screen with cached Needs you.
+- [x] **D16** `setAppBadge` in App.jsx with feature detection.
+- [x] **D17** pixel labels to 12px, `.tag` ellipsis. **D12** scroll-padding-top on `.messages`. **D18** aria-pressed buttons, Escape closes More, Sheet restores focus. **D20** keyboard shortcuts.
+- [x] **B8** weekly rate limit gauge if the status line exposes it (check first; skip if not).
+- [x] **B9** split server/index.js into route modules, `node --check` step in CI, CHANGELOG.md + tags.
+- [x] **C9** example order chips; **C10** activity feed screen; **E1** welcome card; **E2** settings copy.
 
 ## Verification
 - Per phase: `npm test` green (new tests: rules A1 cases, scheduler poll call count + worktree removal + resume, sessions 401), `npm run build` green, smoke-web script passes, CI workflow green on all three OSes once pushed.

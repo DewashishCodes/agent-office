@@ -7,10 +7,11 @@ import Command from './screens/Command.jsx'
 import Board from './screens/Board.jsx'
 import Team from './screens/Team.jsx'
 import AgentProfile from './screens/AgentProfile.jsx'
-import Inbox from './screens/Inbox.jsx'
+import Inbox, { KIND, NotifyCard } from './screens/Inbox.jsx'
 import Home from './screens/Home.jsx'
 import Vault from './screens/Vault.jsx'
 import Onboarding from './screens/Onboarding.jsx'
+import Activity from './screens/Activity.jsx'
 
 const ICONS = {
   home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z',
@@ -21,24 +22,46 @@ const ICONS = {
 }
 const TABS = [['home', 'Home'], ['command', 'Command'], ['inbox', 'Needs you'], ['team', 'Agents'], ['board', 'Board']]
 // Screens without their own tab light up the closest one.
-const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home' }
+const TAB_OF = { vault: 'home', agent: 'team', wall: 'team', onboarding: 'home', activity: 'board' }
+// g then a letter switches tab; / focuses the message box. Listed in the header menu.
+const GO_KEYS = { h: 'home', c: 'command', b: 'board', n: 'inbox', a: 'team' }
 
-// '#/agent/12' -> { view: 'agent', id: 12 }
+// '#/agent/12' -> { view: 'agent', id: 12 }; a push deep link '#/inbox/<item>/<project>' also names the project.
 function parseHash() {
-  const [, view = 'home', id] = location.hash.split('/')
-  return { view: view || 'home', id: id ? Number(id) : null }
+  const [, view = 'home', id, project] = location.hash.split('/')
+  return { view: view || 'home', id: id ? Number(id) : null, project: project ? Number(project) : null }
 }
 
 export default function App() {
   const [authed, setAuthed] = useState(null)
   const [restarted, setRestarted] = useState(false)
+  const check = () => api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, e => setAuthed(e.offline ? 'offline' : false))
   useEffect(() => {
     setAuthHandler(setAuthed)
-    api('/me').then(me => { setAuthed(true); setRestarted(!!me?.restarted) }, () => setAuthed(false))
+    check()
   }, [])
   if (authed === null) return <div className="splash">Loading</div>
+  if (authed === 'offline') return <Offline onRetry={check} />
   if (!authed) return <Login onDone={() => setAuthed(true)} />
   return <Shell restarted={restarted} />
+}
+
+// The last open Needs you list this device saw, kept for the offline screen.
+function Offline({ onRetry }) {
+  const [busy, setBusy] = useState(false)
+  let items = []
+  try { items = JSON.parse(localStorage.getItem('crew.inbox') || '[]') } catch {}
+  return (
+    <main className="login offline stack">
+      <h1>Can't reach your office</h1>
+      <p className="muted">The PC running Agent Office is off, asleep or out of reach. Agents only work while it is on.</p>
+      <Button variant="primary" disabled={busy} onClick={async () => { setBusy(true); await onRetry(); setBusy(false) }}>{busy ? 'Trying' : 'Retry'}</Button>
+      {items.length > 0 && <>
+        <h2>Needs you, when last seen</h2>
+        <ul className="list">{items.map(i => <li key={i.id} className="card"><span className="muted small">{KIND[i.kind] || i.kind}</span> {i.title}</li>)}</ul>
+      </>}
+    </main>
+  )
 }
 
 function Shell({ restarted }) {
@@ -51,6 +74,17 @@ function Shell({ restarted }) {
     addEventListener('hashchange', f)
     return () => removeEventListener('hashchange', f)
   }, [])
+  useEffect(() => {
+    let g = 0
+    const f = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable], .xterm, dialog')) return
+      if (e.key === '/') { const c = document.querySelector('#order-text, #hq-order'); if (c) { e.preventDefault(); c.focus() } }
+      else if (g && Date.now() - g < 1000 && GO_KEYS[e.key]) location.hash = `#/${GO_KEYS[e.key]}`
+      g = e.key === 'g' ? Date.now() : 0
+    }
+    addEventListener('keydown', f)
+    return () => removeEventListener('keydown', f)
+  }, [])
 
   const [projects, reloadProjects, projectsError] = useData('/projects', ev => ev.type === 'project')
   const [pick, setPick] = useState(() => { try { return Number(localStorage.getItem('crew.project')) || null } catch { return null } })
@@ -62,12 +96,19 @@ function Shell({ restarted }) {
   const [floors] = useData('/floors')
   const [floor, setFloorState] = useState(() => { try { return localStorage.getItem('crew.floor') || 'tech' } catch { return 'tech' } })
   const setFloor = f => { setFloorState(f); try { localStorage.setItem('crew.floor', f) } catch {} }
+  useEffect(() => { if (route.project && route.project !== pick) choose(route.project) }, [route.project])
   const project = projects?.find(p => p.id === pick) || projects?.[0] || null
   const pid = project?.id ?? null
 
   const [detail, reloadDetail] = useData(pid && `/projects/${pid}`,
     ev => ev.project_id === pid && (ev.type === 'project' || (ev.type === 'run' && ev.data.status !== 'running')))
   const [openInbox] = useData(pid && `/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
+  useEffect(() => {
+    if (!openInbox) return
+    try { localStorage.setItem('crew.inbox', JSON.stringify(openInbox.map(({ id, kind, title }) => ({ id, kind, title })))) } catch {}
+    // The count on the installed app's icon; browsers without the Badging API skip it.
+    if ('setAppBadge' in navigator) (openInbox.length ? navigator.setAppBadge(openInbox.length) : navigator.clearAppBadge()).catch(() => {})
+  }, [openInbox])
 
   if (!projects) return <div className="splash">{projectsError ? <ErrorText error={projectsError} /> : 'Loading'}</div>
 
@@ -82,8 +123,9 @@ function Shell({ restarted }) {
   // The Wall folded into Home and Team; old #/wall links land on Team.
   else if (view === 'team' || view === 'wall') screen = <Team {...ctx} />
   else if (view === 'agent') screen = <AgentProfile key={route.id} {...ctx} id={route.id} />
-  else if (view === 'inbox') screen = <Inbox {...ctx} />
+  else if (view === 'inbox') screen = <Inbox {...ctx} itemId={route.id} />
   else if (view === 'vault') screen = <Vault {...ctx} />
+  else if (view === 'activity') screen = <Activity {...ctx} />
   else if (view === 'onboarding') screen = <Onboarding {...ctx} />
   else if (view === 'command') screen = <Command {...ctx} running={detail?.running_runs} />
   else screen = <Home {...ctx} />
@@ -115,6 +157,7 @@ function Shell({ restarted }) {
           <Header projects={projects} project={p} detail={detail} onPick={choose} reload={reloadDetail} />
         )}
         {p?.paused ? <Paused pid={pid} reload={reloadDetail} /> : null}
+        {project && <NotifyCard />}
         {restarted && <p className="banner" role="status">The crew server just came back from a crash, power loss or sleep. Interrupted tasks went back in the queue. See Keep it running in the README.</p>}
         {view !== 'onboarding' && ['interviewing', 'proposed'].includes(p?.onboarding_status) && (
           <a className="banner onboard-banner" href="#/onboarding">{p.onboarding_status === 'proposed' ? 'Your office proposal is ready. Review and approve it.' : 'Onboarding is in progress. Answer the questions to set up your office.'}</a>
@@ -127,12 +170,12 @@ function Shell({ restarted }) {
 
 function Header({ projects, project, detail, onPick, reload }) {
   const [run, busy, error] = useAction()
-  const util = detail?.rate_limit?.utilization
-  const pct = util == null ? null : Math.round(util <= 1 ? util * 100 : util)
+  const pctOf = u => (u == null ? null : Math.round(u <= 1 ? u * 100 : u))
+  const pct = pctOf(detail?.rate_limit?.utilization), week = pctOf(detail?.rate_limit_week?.utilization)
   const budget = project.settings?.project_daily_token_budget
   const [day, toggleTheme] = useTheme()
   const kill = () => run(async () => { await api(`/projects/${project.id}/kill`, { method: 'POST' }); reload() })
-  const logout = () => run(async () => { await api('/logout', { method: 'POST' }); location.reload() })
+  const logout = all => run(async () => { await api('/logout', { method: 'POST', body: { all } }); location.reload() })
 
   return (
     <header className="top">
@@ -147,6 +190,7 @@ function Header({ projects, project, detail, onPick, reload }) {
         {detail && <Gauge className="tok-today" title={`Tokens used today${budget ? ` of the ${tokens(budget)} project budget` : ''}`}
           pct={budget ? (detail.tokens_today / budget) * 100 : null}>{tokens(detail.tokens_today)}{budget ? ` / ${tokens(budget)}` : ''} tok</Gauge>}
         {pct != null && <Gauge title="Five hour rate limit used" pct={pct}>5h {pct}%</Gauge>}
+        {week != null && <Gauge className="week" title="Weekly limit used" pct={week}>7d {week}%</Gauge>}
       </div>
       <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={day ? 'Switch to night shift' : 'Switch to day shift'} title={day ? 'Night shift' : 'Day shift'}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={day ? 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' : 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5'} /></svg>
@@ -154,7 +198,9 @@ function Header({ projects, project, detail, onPick, reload }) {
       <More label="Menu">
         {!project.paused && <ConfirmButton variant="ghost" confirm="Stop every agent" onConfirm={kill} disabled={busy}>Stop all agents</ConfirmButton>}
         <a className="btn ghost" href="#/projects">Projects</a>
-        <Button variant="ghost" onClick={logout}>Log out</Button>
+        <Button variant="ghost" onClick={() => logout(false)}>Log out</Button>
+        <ConfirmButton variant="ghost" confirm="Sign out every device" onConfirm={() => logout(true)} disabled={busy}>Log out everywhere</ConfirmButton>
+        <p className="menu-keys muted small"><kbd>/</kbd> message box, <kbd>g</kbd> then <kbd>h</kbd> Home, <kbd>c</kbd> Command, <kbd>n</kbd> Needs you, <kbd>a</kbd> Agents, <kbd>b</kbd> Board</p>
       </More>
       <ErrorText error={error} />
     </header>

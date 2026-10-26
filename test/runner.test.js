@@ -56,3 +56,11 @@ test('keepOpen run: send, interrupt, resume', async () => {
   assert.equal(r.text, 'got: go on')
   assert.equal(row(id).turn, 4)
 })
+
+test('rate limits: five hour and weekly windows land in kv', async () => {
+  await runClaude({ ...base, prompt: 'LIMITS' })
+  const kv = key => JSON.parse(get('SELECT value FROM kv WHERE key = ?', key).value)
+  assert.equal(kv('rate_limit').utilization, 0.25)
+  assert.equal(kv('rate_limit_week').utilization, 0.6)
+  assert.equal(kv('rate_limit_week').resetsAt, 2)
+})

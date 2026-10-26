@@ -14,15 +14,19 @@ export function initNotify() {
   if (!keys) kvSet('vapid', JSON.stringify(keys = webpush.generateVAPIDKeys()))
   webpush.setVapidDetails('mailto:crew@localhost', keys.publicKey, keys.privateKey)
   bus.on('event', e => {
-    if (e.type === 'inbox' && e.data.created) sendPush(e.data.title, e.data.body || '', '/#/inbox')
+    if (e.type !== 'inbox' || !e.data.created) return
+    const i = e.data
+    // Approve and Merge act from the notification itself (web/public/sw.js); anything needing words opens the card.
+    const actions = i.kind === 'plan' ? [{ action: 'approve', title: 'Approve' }] : i.kind === 'merge' && i.task_id ? [{ action: 'merge', title: 'Merge' }] : []
+    sendPush(i.title, i.body || '', `/#/inbox/${i.id}/${i.project_id}`, { item: i.id, actions })
   })
   setInterval(digestTick, 10 * 60 * 1000).unref()
 }
 
 export const publicKey = () => keys?.publicKey
 
-export async function sendPush(title, body, url = '/') {
-  const payload = JSON.stringify({ title, body, url })
+export async function sendPush(title, body, url = '/', extra = {}) {
+  const payload = JSON.stringify({ title, body, url, ...extra })
   await Promise.all(all('SELECT * FROM push_subs').map(s =>
     webpush.sendNotification(s.sub, payload).catch(e => {
       if (e.statusCode === 404 || e.statusCode === 410) run('DELETE FROM push_subs WHERE id = ?', s.id)

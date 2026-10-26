@@ -55,19 +55,19 @@ flowchart LR
 
 ## More than a dev team
 
-Tech is always open. Add floors as you need them. Each floor has its own lead, workers and reviewer, writes Markdown under its own folder, and ships PRs the same way code does.
+Tech is always open. Add floors as you need them. Each floor has its own lead, workers and reviewer, writes Markdown under its own folder, and ships PRs the same way code does. Tech, Design and Docs are the well-tried ones; the rest are marked experimental, and onboarding only proposes them when you ask for that kind of work.
 
 | Floor | What it makes |
 |---|---|
 | **Tech** | The product: code, tests, specs |
 | **Design** | UX flows, wireframes, UI specs, HTML mockups, design tokens |
 | **Docs** | User guides, help center, API reference, changelogs |
-| **Marketing** | Positioning, website copy, blog posts, launch drafts |
-| **Sales** | Ideal customer profile, pitch, outreach drafts |
-| **Customer** | Onboarding guides, FAQ, support replies |
-| **Legal** | Terms, privacy policy, compliance checklists (all drafts) |
-| **Ops & Finance** | Runway and pricing models, budgets, processes |
-| **Research** | Market and competitor research, interview synthesis |
+| **Marketing** (experimental) | Positioning, website copy, blog posts, launch drafts |
+| **Sales** (experimental) | Ideal customer profile, pitch, outreach drafts |
+| **Customer** (experimental) | Onboarding guides, FAQ, support replies |
+| **Legal** (experimental) | Terms, privacy policy, compliance checklists (all drafts) |
+| **Ops & Finance** (experimental) | Runway and pricing models, budgets, processes |
+| **Research** (experimental) | Market and competitor research, interview synthesis |
 
 Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="28" alt="" /> for chores: run the tests, start a dev server, query a database. No plan, no PR.
 
@@ -79,9 +79,11 @@ Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="
 
 **Office.** Every agent at a desk, animated by what it is doing right now. Tap one to open its live terminal.
 
-**Command.** Chat with each floor's lead. Plans arrive as cards.
+**Command.** Chat with each floor's lead. Plans arrive as cards with a cost estimate; edit the agent, dependencies, files and checks before you approve. Your chat stays open between visits.
 
-**Board.** Kanban of every task, from planned to merged.
+**Board.** Kanban of every task, from planned to merged, and a Shipped view with weekly totals.
+
+**Activity.** Everything the office logged, filterable by kind.
 
 </td>
 <td width="50%" valign="top">
@@ -91,6 +93,8 @@ Plus a **Support desk** <img src="web/public/clawd/idle-coffee/loop.gif" width="
 **Team.** Hire, pause or remove agents; pick each one's model and effort.
 
 **Vault.** Notes and decisions the whole team can search.
+
+**Keyboard.** `/` jumps to the message box; `g` then `h`, `c`, `n`, `a` or `b` switches tabs.
 
 </td>
 </tr>
@@ -155,6 +159,10 @@ tailscale serve --bg 5190
 
 Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected), log in, then **Add to Home Screen** to install the app and turn on push notifications.
 
+- A notification opens its card. Plans and ready PRs carry **Approve** and **Merge** buttons that work from the notification itself.
+- The installed app's icon shows how many things wait for you.
+- When the PC is off or out of reach, the app still opens and shows the last Needs you list it saw, with a Retry button.
+
 > [!CAUTION]
 > Never expose port 5190 to the open internet: no port forwarding, no public tunnels. Anyone who gets in can run commands on your computer through the agents.
 
@@ -170,18 +178,20 @@ Open `https://<machine>.<tailnet>.ts.net` on your phone (Tailscale app connected
 | **Owned paths** | After each task, a gate checks every changed file against the agent's owned paths and sends the task back if anything is outside. |
 | **Merges are yours** | Work arrives as pull requests. The exception is hotfix mode, turned on per order: it skips review and pushes straight to the project branch (never forced). |
 | **Autonomous agents** | Turns off an agent's approval prompts (`bypassPermissions`). Only deny rules and the gate remain. Use it only where you accept the risk. |
-| **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. |
+| **Owner token** | The only login. Keep it long and secret. Failed logins are rate limited; agents never see it. Each login is its own session: Log out ends it, Log out everywhere (menu) ends them all. |
 | **Kill switch** | One per project. Stops every session at once. |
+| **Local endpoints** | Hooks and the crew tools answer only with a token made for that one run; hooks also need a per-run secret the agent cannot read from its command line. |
+| **GitHub issues** | One issue per approved task by default; turn it off in Settings to keep tasks out of your repo's issues. |
 
 These are guardrails against accidents, not a sandbox against a determined model. An agent runs as you, with your git and `gh` credentials, and anything it can run (a test script it just edited, `node`, `make`) can reach whatever you can. The safe list refuses paths outside the worktree, but a program it writes and runs is not checked. Run the crew under a separate OS user or in a VM if that matters for your repo.
 
 ## Costs
 
-No backend, no fees. Every session runs on **your own Claude plan** and counts against its usage limits. Pick a model and effort level per agent, and set daily token budgets per project and per agent in Settings; when a budget runs out, no new tasks start until the next day.
+No backend, no fees. Every session runs on **your own Claude plan** and counts against its usage limits. Pick a model and effort level per agent, and set daily token budgets per project and per agent, and a daily dollar budget per project, in Settings; when a budget runs out, no new tasks start until the next day.
 
 <img src="web/public/clawd/limit-5h/loop.gif" width="56" align="left" alt="" />
 
-The header shows what you spent today and how much of your 5-hour limit is used.
+The header shows what you spent today and how much of your 5-hour and weekly limits is used.
 <br clear="left" />
 
 ## Platform
@@ -194,13 +204,17 @@ Built and tested on **Windows 11**. macOS and Linux are **untested**: the code h
 npm run dev:server        # API on 5190, restarts on change
 npm run dev:web           # Vite on 5191, proxies /api
 npm test                  # node:test with a fake claude CLI, no real sessions
+npm run check             # node --check on every server, script and test file
+npm run smoke:web         # renders every screen once through Vite SSR
 ```
 
-[`CLAUDE.md`](CLAUDE.md) has the architecture, conventions and gotchas. [`docs/CONTRACTS.md`](docs/CONTRACTS.md) has the module contracts. Design history is in [`docs/history/`](docs/history/).
+CI runs all of these, plus the build, on Windows, macOS and Linux. API routes live in `server/routes/`, one file per area.
+
+[`CLAUDE.md`](CLAUDE.md) has the architecture, conventions and gotchas. [`docs/CONTRACTS.md`](docs/CONTRACTS.md) has the module contracts. Design history is in [`docs/history/`](docs/history/). [`CHANGELOG.md`](CHANGELOG.md) lists what changed and what to do after pulling, prompt changes included.
 
 ## Credits
 
-The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit. Agent Office is not affiliated with or endorsed by Anthropic.
+The pixel-art Clawd animations in `web/public/clawd/` are by [CodeChrisB/MyClawd](https://github.com/CodeChrisB/MyClawd), a fan project. Clawd is Anthropic's mascot. `pass-note` and `read-note` were drawn for this app with the MyClawd toolkit. Agent Office is not affiliated with or endorsed by Anthropic. The pixel font Silkscreen (Jason Kottke, The Silkscreen Project Authors) ships in `web/public/fonts/` under the SIL Open Font License 1.1 (`OFL.txt` next to it).
 
 ## License
 

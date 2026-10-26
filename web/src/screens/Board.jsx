@@ -35,9 +35,9 @@ export default function Board({ pid, project, orderId }) {
 
   const blocked = shown.filter(t => t.status === 'blocked')
   const switcher = (
-    <div className="mode" role="tablist" aria-label="Board view">
-      <button type="button" role="tab" aria-selected={mode === 'flight'} onClick={() => setMode('flight')}>In flight</button>
-      <button type="button" role="tab" aria-selected={mode === 'shipped'} onClick={() => setMode('shipped')}>Shipped</button>
+    <div className="mode" role="group" aria-label="Board view">
+      <button type="button" aria-pressed={mode === 'flight'} onClick={() => setMode('flight')}>In flight</button>
+      <button type="button" aria-pressed={mode === 'shipped'} onClick={() => setMode('shipped')}>Shipped</button>
     </div>
   )
   if (mode === 'shipped') return <section className="page board-page stack">{switcher}<Shipped pid={pid} /></section>

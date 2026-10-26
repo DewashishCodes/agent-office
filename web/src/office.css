@@ -71,12 +71,13 @@
 .desk::before { left: 8px; } .desk::after { right: 8px; }
 .tag {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 15px; padding: 2px 6px 1px;
-  font: 10px/1.2 "Silkscreen", var(--mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap;
+  max-width: calc(192px * var(--s) + 28px); font: 12px/1.2 "Silkscreen", var(--mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap;
   background: var(--ink); border: 2px solid #4a443c; color: var(--paper);
 }
 .station.selected .tag { background: #d97757; border-color: #d97757; color: var(--ink); }
 .doing { display: block; max-width: calc(192px * var(--s) + 16px); margin-top: 3px; font-size: 11px; color: #c9c1b2; text-align: center; }
-.light { width: 8px; height: 8px; background: #6f6a63; box-shadow: 0 0 0 1px var(--ink); }
+.tag .clip { min-width: 0; }
+.light { flex: none; width: 8px; height: 8px; background: #6f6a63; box-shadow: 0 0 0 1px var(--ink); }
 .l-busy .light { background: #6bd46d; box-shadow: 0 0 6px #6bd46d; }
 .l-wait .light, .l-hold .light { background: #e8b04a; }
 .l-ask .light { background: #ff6b5e; animation: blink 1s steps(2) infinite; }
@@ -134,7 +135,9 @@
 .hq-term .tile .meter { display: none; }
 
 /* Config and vault: 2x2 tiles. */
-.hq-config { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; }
+.hq-config { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 8px; }
+.hq-config .tool { min-height: 0; }
+.hq-config > :last-child:nth-child(odd) { grid-column: span 2; }
 .tool {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 64px;
   font: inherit; font-size: 12.5px; font-weight: 650; color: var(--text); text-decoration: none; cursor: pointer;
@@ -155,7 +158,7 @@
 .l-doing .kcard { border-left-color: var(--accent); }
 .l-check .kcard { border-left-color: var(--warn); }
 .kcard.blocked { border-left-color: var(--err); }
-.kmeta { font-size: 11.5px; color: var(--muted); }
+.kmeta { font-size: 12px; color: var(--muted); }
 .lane-empty { font-size: 13px; color: var(--muted); padding: 4px 2px; list-style: none; }
 
 /* Order section: open orders with progress, what needs the owner, the order bar. */
@@ -165,6 +168,11 @@
 .needs-btn { min-height: 30px; padding: 0 10px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; background: var(--err); color: var(--surface); }
 .needs-btn.calm { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .order-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.welcome { gap: 6px; padding: 10px 12px; font-size: 13.5px; border-color: var(--accent); }
+.welcome p { margin: 0; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; }
+.examples .chip { min-height: 32px; padding: 4px 12px; border-radius: 99px; font: inherit; font-size: 13px; text-align: left; color: var(--text); background: var(--surface-2); border: 1px dashed var(--accent); cursor: pointer; }
+.examples .chip:hover { background: var(--accent-soft); }
 .order-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 13.5px; }
 .order-line > a { color: var(--text); text-decoration: none; }
 .order-line > a:hover { color: var(--accent); }
@@ -195,7 +203,9 @@
   .hq-orders { order: 1; }
   .hq-kanban { order: 2; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .hq-kanban .lane { flex: 0 0 78%; scroll-snap-align: start; max-height: 260px; }
-  .hq-config { order: 3; grid-template-columns: repeat(4, 1fr); }
+  .hq-config { order: 3; grid-template-columns: repeat(5, 1fr); }
+  .hq-config .tool { min-height: 64px; }
+  .hq-config > :last-child:nth-child(odd) { grid-column: auto; }
   .window:nth-child(n + 3) { display: none; }
 }
 .lane-done { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--ok); }
@@ -214,7 +224,7 @@
 /* Order section modes and the Support conversation. */
 .mode { display: inline-flex; padding: 2px; border-radius: 99px; background: var(--surface-2); }
 .mode button { min-height: 28px; padding: 0 12px; border: 0; border-radius: 99px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
-.mode button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+.mode button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
 .order-bar.support .btn.primary { background: #d97757; border-color: #d97757; color: #1b1916; }
 .support-thread { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .sp { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 92%; }
@@ -259,11 +269,11 @@
 .strip-tabs { padding-right: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 .strip-tab {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
-  font: 10px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
+  font: 12px/1 var(--pixel); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: pointer;
   color: var(--muted); background: var(--surface-2); border: 2px solid transparent; border-radius: 6px;
 }
 .strip-tab:hover { color: var(--text); }
-.strip-tab[aria-selected="true"] { color: var(--accent-text); background: var(--accent); }
+.strip-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--accent); }
 .strip-tab .light { box-shadow: none; }
 
 /* Needs you: anything waiting on the owner pulses until answered. */
@@ -292,8 +302,8 @@
 .hq-space { gap: 6px; }
 .floor-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .floor-chip { display: inline-block; width: 8px; height: 8px; background: var(--floor, var(--accent)); box-shadow: 0 0 0 1px rgb(0 0 0 / .4); }
-.floor-tab[aria-selected="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
-.floor-tab[aria-selected="true"] .floor-chip { background: var(--accent-text); }
+.floor-tab[aria-pressed="true"] { color: var(--accent-text); background: var(--floor, var(--accent)); }
+.floor-tab[aria-pressed="true"] .floor-chip { background: var(--accent-text); }
 .floor-add {
   flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; cursor: pointer;
   font: 14px/1 var(--pixel); color: var(--muted); background: var(--surface-2); border: 2px dashed var(--border); border-radius: 6px;
@@ -301,6 +311,8 @@
 .floor-add:hover { color: var(--accent); border-color: var(--accent); }
 .room .sign { color: var(--floor, #d97757); border-color: var(--floor, #d97757); }
 .chat-floors { position: sticky; top: 49px; z-index: 3; padding: 6px 0; background: var(--bg); }
+/* Page Down, focus and scrollIntoView stop below the sticky header and floor bar instead of under them. */
+html:has(.chat-floors) { scroll-padding-top: 100px; }
 .floor-bar .strip-tabs { flex: 0 1 auto; }
 .needs-strip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); min-width: 0; }
 @media (max-width: 899px) {

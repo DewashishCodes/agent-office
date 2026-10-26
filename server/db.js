@@ -135,6 +135,10 @@ CREATE TABLE IF NOT EXISTS push_subs (
   sub TEXT NOT NULL                       -- JSON PushSubscription
 );
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS sessions (     -- owner logins; logout deletes the row so a copied cookie stops working
+  id TEXT PRIMARY KEY,                    -- sha256 hex of the cookie value, so the database alone cannot log in
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS chats (        -- Command conversations; the lead only sees its own chat as context
   id INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -267,6 +271,7 @@ export const DEFAULT_SETTINGS = {
   project_daily_cost_budget: null,  // dollars per local day, null = no limit
   permission_timeout_min: 15,  // unanswered permission prompts are denied after this
   question_timeout_min: 30,    // crew_ask to the owner gives up after this
+  github_issues: true,         // one GitHub issue per approved task, labelled as it moves
   auto_allow_bash: '^(npm (test|ci|run \\S+)\\b|npm (install|i)\\s*$|(pnpm|yarn) (test|run \\S+)\\b|(pnpm|yarn)( install)?\\s*$|node (--test\\b|(?!-)\\S+)|git (status|diff|log|show|add|commit|checkout|switch|branch|merge|stash|rev-parse|rm|mv|restore)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|cd|mkdir|sort|uniq|diff|sleep|wait|true|kill %\\d+|pytest|go test|cargo (test|build|check)|make)\\b',
 }
 

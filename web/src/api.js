@@ -3,13 +3,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 let onAuth = () => {}
 export const setAuthHandler = fn => { onAuth = fn }
 
+const unreachable = () => Object.assign(new Error("Can't reach your office"), { offline: true })
+
 export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch('/api' + path, {
     method,
     credentials: 'same-origin',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  }).catch(() => { throw unreachable() })
+  // A proxy in front (Tailscale Serve) answers 502 or 504 while the server is down.
+  if (res.status === 502 || res.status === 504) throw unreachable()
   const data = await res.json().catch(() => null)
   if (res.status === 401 && path !== '/login') onAuth(false)
   if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)

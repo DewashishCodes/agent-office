@@ -2,11 +2,11 @@
 // node:http instead of fetch: a permission answer can take the owner longer than fetch's 5 minute header timeout.
 import { request } from 'node:http'
 
-const [url, kind] = process.argv.slice(2)
+const [url, kind, secret] = process.argv.slice(2)
 let body = ''
 for await (const c of process.stdin) body += c
 
-const req = request(`${url}?kind=${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }, res => {
+const req = request(`${url}?kind=${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Crew-Hook': secret || '' } }, res => {
   let out = ''
   res.setEncoding('utf8')
   res.on('data', d => { out += d })

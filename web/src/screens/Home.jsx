@@ -133,11 +133,11 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       {wide && (
         <section className="hq-term" aria-label="Terminal">
           <div className="term-strip">
-            <div className="strip-tabs" role="tablist" aria-label="Agents">
+            <div className="strip-tabs" role="group" aria-label="Agents">
               {agents.map(a => {
                 const lt = light(a)
                 return (
-                  <button key={a.id} type="button" role="tab" aria-selected={pick?.id === a.id} className={`strip-tab l-${lt}`}
+                  <button key={a.id} type="button" aria-pressed={pick?.id === a.id} className={`strip-tab l-${lt}`}
                     onClick={() => setSelected(a.id)} title={lt === 'ask' ? `${a.name} is waiting for your answer` : a.name}>
                     <i className="light" aria-hidden="true" />{a.name}
                   </button>
@@ -161,6 +161,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
       <nav className="hq-config" aria-label="Config and vault">
         <Tool label="Settings" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4" onClick={() => setSheet('settings')} />
         <Tool label="Vault" d="M4 5h16v14H4zM4 9h16M10 13h4" href="#/vault" />
+        <Tool label="Activity" d="M3 12h4l3 7 4-14 3 7h4" href="#/activity" />
         <Tool label="Team" d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17 14c2.3.4 4 2.6 4 6" href="#/team" />
         <Tool label="Projects" d="M3 7h7l2 2h9v10H3z" href="#/projects" />
       </nav>
@@ -171,6 +172,7 @@ export default function Home({ pid, project, reloadProject, floors, floor: saved
 
       <section className="hq-orders" aria-label="Orders">
         <Orders pid={pid} floor={floor} agents={agents} lead={agents.find(a => a.role === 'orchestrator')} orders={orders} needs={items?.length || 0} onNeeds={() => setSheet('needs')}
+          fresh={tasks?.length === 0 && orders?.length === 0 && agents.length > 0}
           support={agents.find(a => a.role === 'support')} services={services} onServices={() => setSheet('services')} />
       </section>
 
@@ -241,8 +243,17 @@ function Kanban({ tasks, orders }) {
   })
 }
 
+// First-order nudges per floor; a tap fills the order bar, nothing is sent until the owner does.
+const EXAMPLES = {
+  tech: ['Write tests for the code that has the fewest', 'Add a section to the README on running the project locally', 'Find dead code and remove it'],
+  docs: ['Write a getting started guide from the README and the code', 'Document every public API endpoint'],
+  design: ['Review the main screens for accessibility problems', 'Write the current colours and spacing down as design tokens'],
+}
+
 // The order section has two modes: orders for the build team, and Support for chores (no plan, no PR).
-function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices }) {
+function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, services, onServices, fresh }) {
+  const [welcome, setWelcome] = useState(() => { try { return !localStorage.getItem(`crew.welcome.${pid}`) } catch { return true } })
+  const hideWelcome = () => { setWelcome(false); try { localStorage.setItem(`crew.welcome.${pid}`, '1') } catch {} }
   const [mode, setMode] = useState(() => { try { return localStorage.getItem('crew.bar') === 'support' ? 'support' : 'order' } catch { return 'order' } })
   const pickMode = m => { setMode(m); setSent(false); try { localStorage.setItem('crew.bar', m) } catch {} }
   const [text, setText] = useState('')
@@ -262,9 +273,9 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
   return (
     <>
       <div className="orders-head">
-        <div className="mode" role="tablist" aria-label="Who gets your message">
-          <button type="button" role="tab" aria-selected={mode === 'order'} onClick={() => pickMode('order')}>Orders</button>
-          <button type="button" role="tab" aria-selected={mode === 'support'} onClick={() => pickMode('support')}>Support</button>
+        <div className="mode" role="group" aria-label="Who gets your message">
+          <button type="button" aria-pressed={mode === 'order'} onClick={() => pickMode('order')}>Orders</button>
+          <button type="button" aria-pressed={mode === 'support'} onClick={() => pickMode('support')}>Support</button>
         </div>
         <span className="grow" />
         <button type="button" className={`needs-btn ${needs ? '' : 'calm'}`} onClick={onNeeds}>{needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'All clear'}</button>
@@ -274,7 +285,21 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
           <SupportThread pid={pid} support={support} floor={floor.key} onSentToTeam={() => { pickMode('order'); setSent(true) }} />
           <ServiceChips services={services} onOpen={onServices} />
         </>
-      ) : (
+      ) : (<>
+        {fresh && welcome && (
+          <div className="card welcome stack">
+            <p><b>Your office is ready.</b> The agents at the desks are Claude Code sessions on this PC. {lead?.name || 'The lead'} turns your orders into a plan, workers build each task as a pull request, then the reviewer{floor.key === 'tech' ? ' and QA' : ''} check it.</p>
+            <p>Give the first order below. Plans to approve, questions and PRs to merge wait for you in Needs you.</p>
+            <div className="actions"><Button small variant="ghost" onClick={hideWelcome}>Got it</Button></div>
+          </div>
+        )}
+        {fresh && (
+          <div className="examples" role="group" aria-label="Example orders">
+            {(EXAMPLES[floor.key] || [`Draft the first ${floor.name} document this product needs`]).map(x => (
+              <button key={x} type="button" className="chip" onClick={() => { setText(x); document.getElementById('hq-order')?.focus() }}>{x}</button>
+            ))}
+          </div>
+        )}
         <ul className="order-list">
           {orders?.length ? orders.map(o => {
             const total = Object.values(o.counts).reduce((s, n) => s + n, 0)
@@ -292,9 +317,9 @@ function Orders({ pid, floor, agents, lead, orders, needs, onNeeds, support, ser
                 {o.status === 'awaiting_approval' && <PlanCard orderId={o.id} pid={pid} agents={agents} />}
               </li>
             )
-          }) : <li className="lane-empty">No open orders</li>}
+          }) : <li className="lane-empty">{fresh ? 'No orders yet. Tap an example to start from it.' : 'No open orders'}</li>}
         </ul>
-      )}
+      </>)}
       <form className={`order-bar ${mode}`} onSubmit={send}>
         <label className="sr-only" htmlFor="hq-order">{mode === 'support' ? 'Ask Support' : `New order for ${lead?.name || 'the lead'}`}</label>
         <input id="hq-order" value={text} onChange={e => { setText(e.target.value); setSent(false) }}

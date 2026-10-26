@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps, chainOrder, loginLimiter } from '../server/rules.js'
+import { parseReply, parseVerdict, matchAgent, readyTasks, isAllowed, findCycle, permissionPolicy, overlaps, chainOrder, loginLimiter, planGaps } from '../server/rules.js'
 
 process.env.CREW_DB = ':memory:'
 const { DEFAULT_SETTINGS } = await import('../server/db.js')
@@ -226,4 +226,14 @@ test('estimates: median of done tasks per size, a guess where there are none', a
   assert.deepEqual(e.M, { tokens: 15, cost: 5, n: 2 })
   assert.equal(e.L.n, 0)
   assert.ok(e.L.cost > 0)
+})
+
+test('planGaps: an edited plan names an agent that cannot take the task', () => {
+  const agents = [agent(1, 'frontend', ['web/**'], { name: 'W' }), agent(2, 'backend', ['api/**'], { name: 'A' })]
+  assert.deepEqual(planGaps(agents, [
+    { key: 't1', agent: 'W', files: ['web/x.js'] },
+    { key: 't2', agent: 'W', files: ['api/y.js'] },
+    { key: 't3', agent: 'A', files: ['docs/z.md'] },
+    { key: 't4', role: 'backend', files: ['api/y.js'] },
+  ]), ['t2: W does not own all of its files, A does', 't3: no agent on this floor owns all of its files'])
 })

@@ -102,7 +102,7 @@ Statuses: `interviewing -> proposed -> running -> pr_open -> done | failed` (`pe
 ```js
 chat(project_id, text) -> Promise<void>     // F2. Saves user message, runs Orchestrator (resume its session), saves reply. If the reply has a plan, creates the order and plan card.
 revisePlan(order_id, feedback) -> Promise<void>  // F4. Re-plan; unchanged tasks keep their keys
-approvePlan(order_id, tasks = null) -> void       // F4. Optional edited task list replaces plan.tasks. Creates task rows + issues, order in_progress, scheduler.kick()
+approvePlan(order_id, tasks = null) -> void       // F4. Optional edited task list replaces plan.tasks (checked with planGaps). Creates task rows + issues (only with `settings.github_issues`), order in_progress, scheduler.kick()
 rejectPlan(order_id) -> void
 integrateOrder(order_id) -> Promise<void>         // all tasks done: Orchestrator checks the PR diffs fit; order ready_to_merge; one inbox 'merge' item per PR
 parseReply(text) -> { text, plan | null }         // pure. Plan is the last ```json fenced block with a "tasks" array
@@ -146,10 +146,10 @@ Tests (owner: Brain agent) in `test/*.test.js`: parseReply, matchAgent, readyTas
 
 ## API module (owner: API agent)
 
-### server/index.js
-Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
+### server/index.js and server/routes/
+index.js holds the app, hooks, MCP, auth, events, push, static files and boot; the `/api` routes live in `server/routes/{projects,orders,runs,support,vault,agents,inbox}.js` (each an `express.Router`, mounted in that order behind the cookie check), with shared request helpers (`fail`, `int`, `found`, `project`, `floorKey`, ...) in `server/http.js`. Express 5, JSON bodies, port `process.env.PORT || 5190`. Exits with a clear message when `OWNER_TOKEN` is missing. Serves `web/dist` statically with SPA fallback to index.html. On boot: `scheduler.start()`, `initNotify()`.
 
-Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and sets cookie `crew=<sha256 of token>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires the cookie. `GET /api/health -> {ok, uptime, projects, running_runs}` (no cookie from loopback without X-Forwarded-For, else the cookie). `GET /api/backup` streams a `VACUUM INTO` snapshot of the database. Server output is also written to `data/server.log` (`server/logfile.js`, rotated to `.1` at 10 MB). `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout`.
+Auth: `POST /api/login {token}` compares with `OWNER_TOKEN` (timing-safe) and creates a random session (table `sessions`, stored as its sha256) and sets cookie `crew=<session id>` (HttpOnly, SameSite=Lax, Secure when the request is https, 30 days). Every other `/api/*` route requires a session under 30 days old. `GET /api/health -> {ok, uptime, projects, running_runs}` (no cookie from loopback without X-Forwarded-For, else the cookie). `GET /api/backup` streams a `VACUUM INTO` snapshot of the database. Server output is also written to `data/server.log` (`server/logfile.js`, rotated to `.1` at 10 MB). `GET /api/me -> {ok:true, restarted}` (restarted: the last stop was unclean and the server booted under a minute ago; kv `running` is 1 until a clean exit). A missing or example `OWNER_TOKEN` is generated at boot and written to `.env`. `POST /api/logout {all?}` deletes this session, or every session with all ("Log out everywhere").
 
 Responses are DB rows as read by db.js (JSON columns parsed). Errors: `{ error: "message" }` with 4xx/5xx. Long work (chat, onboarding, plan actions that run Claude) returns `202 {ok:true}` immediately and reports progress through SSE.
 
@@ -204,27 +204,28 @@ Every action except a failed one resolves the inbox item.
 
 ### server/notify.js
 ```js
-initNotify()                      // VAPID keys generated once and stored in kv ('vapid'); listen to bus 'event' with type 'inbox' and data.created -> sendPush; start digest timer
+initNotify()                      // VAPID keys generated once and stored in kv ('vapid'); listen to bus 'event' with type 'inbox' and data.created -> sendPush to `/#/inbox/<item>/<project>` with `item` and `actions` (Approve for plan, Merge for a task merge); start digest timer
 publicKey() -> string
-sendPush(title, body, url = '/') // to every push_subs row; delete subscriptions that return 404/410
+sendPush(title, body, url = '/', extra = {}) // payload {title, body, url, ...extra} to every push_subs row; delete subscriptions that return 404/410
 digestNow(project_id) -> string   // plain text: yesterday's done/merged tasks, in review, open inbox count, tokens used. Logged as activity kind 'digest' and pushed
 ```
 Digest timer: check every 10 minutes; at `settings.digest_hour` local time, once per day per project (kv key `digest:<project_id>` = date).
 
 ## UI module (owner: UI agent)
 
-`web/index.html`, `web/src/main.jsx`, `web/src/App.jsx`, `web/src/api.js`, `web/src/styles.css`, `web/src/screens/{Login,Command,Board,Team,AgentProfile,Inbox,Projects}.jsx`, `web/public/{manifest.json,sw.js,icon.svg}`.
+`web/index.html`, `web/src/main.jsx`, `web/src/App.jsx`, `web/src/api.js`, `web/src/styles.css`, `web/src/screens/{Login,Command,Board,Team,AgentProfile,Inbox,Projects,Home,Vault,Onboarding,Activity}.jsx`, `web/public/{manifest.json,sw.js,icon.svg,fonts/}`.
 
 - React 19, no router library: tab state in App plus `location.hash` (`#/command`, `#/board`, `#/team`, `#/agent/12`, `#/inbox`). Project switcher at the top (stored in localStorage, try/catch).
 - `api.js`: `api(path, {method, body})` with `credentials: 'same-origin'`, throws on non-2xx with the server's `error`; a 401 shows Login. `useEvents(onEvent)` hook with one shared `EventSource('/api/events')`. Screens refetch their list when an event of the matching type and project arrives (simple and correct beats clever).
 - Mobile first: works at 380px, bottom tab bar (Command, Board, Team, Inbox, with an open-inbox count badge), left sidebar from 900px. Light and dark via CSS variables and `prefers-color-scheme`. Plain CSS, no framework. Tap targets at least 44px. Labels on every input.
-- Command: chat with the Orchestrator; orchestrator message with `order_id` renders the plan card (summary, tasks with owner role, size, depends_on, acceptance on expand) with Approve, Edit (inline edit of title/role/size and a feedback box -> revise), Reject while the order is `awaiting_approval`. Show "Orchestrator is thinking" with the run's `last_event` while an orchestrator run is running. Kill switch button in the header menu (with a confirm step inside the UI, not `window.confirm`).
+- Command: chat with the Orchestrator; orchestrator message with `order_id` renders the plan card (summary, tasks with owner role, size, depends_on, acceptance on expand) with Approve, Edit (title, agent from the floor's workers, size, depends_on, files, acceptance, and a feedback box -> revise; an edited plan is refused when `rules.planGaps` finds a task its agent cannot take), Reject while the order is `awaiting_approval`. Show "Orchestrator is thinking" with the run's `last_event` while an orchestrator run is running. Kill switch button in the header menu (with a confirm step inside the UI, not `window.confirm`).
+- Activity (`#/activity`): `GET /api/projects/:id/activity?limit=500`, newest first, a select filters by kind; linked from Home's config tiles and the Shipped view.
 - Board: six columns (horizontal scroll on mobile, one column visible at a time with a column picker is fine), filter by agent and by order; tap a card -> sheet with description, acceptance, notes, attempts, PR link, issue link, activity and runs, Retry button when blocked.
 - Team: card per agent (initials avatar, name, role, status dot, current task, today's tokens, live last_event), Add (pick template or blank), Clone, Pause/Resume, Remove (hidden for the Orchestrator). Tap -> Agent profile.
 - Agent profile: form for every profile field (owned/readonly paths as one glob per line), notes list + add note, recent tasks, recent runs with their result text (read-only "talk to this agent" view).
 - Inbox: open items newest first, one-tap actions per kind (see API), link to GitHub, answer box for questions. Toggle to show resolved.
 - Projects screen when there is no project yet: input "owner/repo" -> POST /api/projects, show onboarding status.
-- PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (focus or open url). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key.
+- PWA: manifest (name "Agent Office", standalone, icon.svg), `sw.js` handles `push` (showNotification with title/body/url) and `notificationclick` (an action button posts `/api/inbox/<item>/action` with the cookie and shows a confirmation; a plain tap or a failed action focuses or opens url, which selects that project and scrolls to the card). Register the SW in main.jsx. A "Turn on notifications" button in the Inbox header that subscribes with the key from /api/push/key; on a touch device that was never asked, a one-time card under the header offers the same (localStorage `crew.notifyCard`).
 
 ## v2 additions (docs/history/PLAN-V2.md, phases E1 to E5)
 
@@ -259,7 +260,7 @@ Tools `crew_post(to, text)`, `crew_ask(to, question)`, `crew_read()`, `crew_task
 - `run_events (run_id, seq, type, json)`: types `prompt | assistant | user | result | control_request | owner | note`. Pruned after 14 days.
 - `crew_messages (project_id, from_agent_id, to_agent_id, to_owner, task_id, text, kind, delivered)`.
 - `runs`: `turn`, `state`, `pending_permission`. `tasks`: `plan_agent`, `result`, `wait_reason`, `checks`, `resume_session`, `conflict`, `merged_at`. `inbox`: `run_id`, `ref`.
-- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget).
+- Settings: `permission_timeout_min` 15, `question_timeout_min` 30, `auto_allow_bash` (regex), `project_daily_cost_budget` (dollars, null = off; `tickProject` stops dispatch past it like the token budget), `github_issues` (default true; false skips `createIssue` and makes `issueStatus` a no-op).
 
 ### Routes
 | Method | Path | Does |
@@ -281,20 +282,20 @@ Plan tasks carry `"agent": "<name>"` (`role` still read for old plans). `depends
 
 ### Runner
 - Engine per run: `pty` for kinds `task | review | qa` (interactive `claude` in a pty), `json` for the rest, for everything under `CREW_TERMINAL=json` and under `CREW_CLAUDE_BIN`. `runs.terminal = 1` marks pty runs. The `runClaude` contract and its result are unchanged.
-- pty runs: `--session-id <uuid>` (or `--resume`), one `--settings` JSON with deny rules, hooks (PermissionRequest, Stop, UserPromptSubmit) and a status line, all running `node server/hook.mjs <base>/hook/<token> hook|status`.
-- `hookEvent(token, kind, body)`: status line -> cost (`cost.total_cost_usd`, cumulative per process) and kv `rate_limit` from `rate_limits.five_hour.used_percentage`; PermissionRequest -> policy, `ask` holds the hook until `answerPermission` or the timeout; Stop -> `result` run_event, run ends 2.5s later unless a new prompt was submitted, the run is kept open or the owner has the keyboard.
+- pty runs: `--session-id <uuid>` (or `--resume`), one `--settings` file (`data/prompts/run-<id>-settings.json`, removed at the end) with deny rules, hooks (PermissionRequest, Stop, UserPromptSubmit) and a status line, all running `node server/hook.mjs <base>/hook/<token> hook|status <secret>`. The per-run secret goes back as the `X-Crew-Hook` header; the token alone gets nothing.
+- `hookEvent(token, kind, body, secret)`: status line -> cost (`cost.total_cost_usd`, cumulative per process) and kv `rate_limit` / `rate_limit_week` from `rate_limits.five_hour` / `rate_limits.seven_day` `used_percentage` (stream-json runs: `rate_limit_event` `unifiedWindows`); `GET /api/projects/:id` returns both as `rate_limit` and `rate_limit_week`, the header shows 5h and 7d gauges; PermissionRequest -> policy, `ask` holds the hook until `answerPermission` or the timeout; Stop -> `result` run_event, run ends 2.5s later unless a new prompt was submitted, the run is kept open or the owner has the keyboard.
 - Tokens come from the session jsonl (`input + cache_creation`, `output`, counted once per API message id).
 - `watchPty(run_id, fn)`: `{cols, rows}`, the buffered screen, then chunks; `null` at the end. `ptyInput` only while `state = handed_off`. `ptyResize` broadcasts the new size. `handoffRun` on a pty run returns `{ terminal: true, ... }` and keeps the process.
 
 ### Routes
 | Method | Path | Does |
 | --- | --- | --- |
-| POST | /hook/:token?kind=hook\|status | loopback only, per-run token; body up to 50 MB |
+| POST | /hook/:token?kind=hook\|status | loopback only, per-run token and `X-Crew-Hook` secret; body up to 50 MB |
 | GET | /api/runs/:id/pty | SSE: live terminal, or the tail of `data/pty/run-<id>.log` then `event: end` |
 | POST | /api/runs/:id/pty/input `{data}`, /pty/resize `{cols, rows}` | keyboard after Take over, size from the driving view |
 | GET, POST | /api/projects/:id/vault, /vault/doc?path=, /vault/files?name=&type= (octet-stream body) | list, repo doc, note or decision, upload |
 | GET, PATCH, DELETE | /api/vault/:id, GET /api/vault/:id/file | entry, edit, delete, download |
-PATCH /api/projects/:id validates every settings key (`SETTINGS` in index.js).
+PATCH /api/projects/:id validates every settings key (`SETTINGS` in routes/projects.js).
 
 ### Vault
 Table `vault (kind note | decision | file, title, body, file, mime, size, tags, author_agent_id)`, `server/vault.js`. Crew MCP adds `vault_search`, `vault_read`, `vault_write` (task, QA: all; Reviewer: search, read; Orchestrator: all). Task prompts list titles via `vaultIndex`. `permissionPolicy` allows Read/Glob/Grep/LS under `settings.read_roots` (the scheduler passes the vault dir).

@@ -45,6 +45,15 @@ export function matchAgent(agents, task) {
   return (name && ok.find(a => a.name === name)) || ok.find(a => a.role === task.role) || ok[0] || null
 }
 
+// Plan tasks whose named agent cannot take them: the scheduler would never dispatch them. One line per task.
+export function planGaps(agents, tasks) {
+  return tasks.flatMap(t => {
+    const a = matchAgent(agents, { files: t.files, plan_agent: t.agent, role: t.role })
+    if (a && (!t.agent || a.name === t.agent)) return []
+    return [`${t.key}: ${!a ? 'no agent on this floor owns all of its files' : `${t.agent} does not own all of its files, ${a.name} does`}`]
+  })
+}
+
 export function readyTasks(tasks) {
   const byId = new Map(tasks.map(t => [t.id, t]))
   return tasks.filter(t => t.status === 'planned' && (t.depends_on || []).every(id => byId.get(id)?.status === 'done'))

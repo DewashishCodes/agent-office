@@ -6,10 +6,14 @@ import TaskFacts, { useTask } from '../components/TaskFacts.jsx'
 import Permission from '../components/Permission.jsx'
 import RetryNote from '../components/RetryNote.jsx'
 
-export default function Inbox({ pid }) {
+export default function Inbox({ pid, itemId }) {
   const [history, setHistory] = useState(false)
   const [items, , error] = useData(`/projects/${pid}/inbox?status=open`, on(pid, 'inbox'))
   const [done, , doneError] = useData(history && `/projects/${pid}/inbox?status=done`, on(pid, 'inbox'))
+  // From a notification: bring its card into view once the list is in; a resolved one shows in history.
+  const linked = itemId && items && !items.some(i => i.id === itemId)
+  useEffect(() => { if (linked) setHistory(true) }, [linked])
+  useEffect(() => { document.getElementById(`item-${itemId}`)?.scrollIntoView({ block: 'center' }) }, [itemId, items, done])
   return (
     <section className="page stack">
       <div className="row wrap">
@@ -18,13 +22,13 @@ export default function Inbox({ pid }) {
       </div>
       <ErrorText error={error} />
       {items?.length === 0 && <Empty>All clear. Nothing needs you right now.</Empty>}
-      <ul className="list">{items?.map(i => <Item key={i.id} i={i} />)}</ul>
+      <ul className="list">{items?.map(i => <Item key={i.id} i={i} linked={i.id === itemId} />)}</ul>
       <Button variant="ghost" aria-expanded={history} onClick={() => setHistory(h => !h)}>{history ? 'Hide history' : 'Show history'}</Button>
       {history && (
         <>
           <ErrorText error={doneError} />
           {done?.length === 0 && <Empty>Nothing resolved yet.</Empty>}
-          <ul className="list">{done?.map(i => <Item key={i.id} i={i} />)}</ul>
+          <ul className="list">{done?.map(i => <Item key={i.id} i={i} linked={i.id === itemId} />)}</ul>
         </>
       )}
     </section>
@@ -50,9 +54,9 @@ function permissionReq(i) {
   return { tool_name: input?.command ? 'Bash' : '', input, summary: i.title.replace(/^.*? asks to run: /, '') }
 }
 
-const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
+export const KIND = { plan: 'Plan to approve', merge: 'Ready to merge', question: 'Question', failure: 'Failure', permission: 'Permission' }
 
-export function Item({ i }) {
+export function Item({ i, linked }) {
   const [text, setText] = useState('')
   const [revising, setRevising] = useState(false)
   const [merging, setMerging] = useState('')
@@ -64,7 +68,7 @@ export function Item({ i }) {
   const red = task?.checks === 'fail'
 
   return (
-    <li className={`card inbox-item ${open ? '' : 'resolved'}`}>
+    <li id={`item-${i.id}`} className={`card inbox-item ${open ? '' : 'resolved'} ${linked ? 'linked' : ''}`}>
       <div className="row wrap">
         <Badge status={i.kind}>{KIND[i.kind] || i.kind}</Badge>
         <span className="muted small grow"><Ago at={i.created_at} />{!open && ', resolved'}</span>
@@ -122,12 +126,31 @@ export function Item({ i }) {
   )
 }
 
+// Once, on a phone or tablet that has not been asked yet: what arrives, and the button to allow it.
+export function NotifyCard() {
+  const [shown, setShown] = useState(() => {
+    try {
+      return 'PushManager' in window && 'Notification' in window && Notification.permission === 'default'
+        && matchMedia('(pointer: coarse)').matches && !localStorage.getItem('crew.notifyCard')
+    } catch { return false }
+  })
+  if (!shown) return null
+  const hide = () => { setShown(false); try { localStorage.setItem('crew.notifyCard', '1') } catch {} }
+  return (
+    <div className="banner notify-card" role="region" aria-label="Notifications">
+      <span>Get a notification when a plan waits for approval, a PR is ready to merge, or an agent asks you something. Approve and Merge work from the notification.</span>
+      <PushButton onOn={hide} />
+      <Button small variant="ghost" onClick={hide}>Not now</Button>
+    </div>
+  )
+}
+
 function urlB64(s) {
   const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'))
   return Uint8Array.from(b, c => c.charCodeAt(0))
 }
 
-export function PushButton() {
+export function PushButton({ onOn }) {
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   const [on, setOn] = useState(false)
   const [run, busy, error] = useAction()
@@ -144,6 +167,7 @@ export function PushButton() {
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(publicKey) })
     await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } })
     setOn(true)
+    onOn?.()
   })
   return (
     <div>

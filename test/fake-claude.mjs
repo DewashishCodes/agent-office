@@ -30,6 +30,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   const text = m.message.content
   if (text.includes('MCP')) return reply(process.argv[process.argv.indexOf('--mcp-config') + 1])
   if (text.includes('HANG')) return out({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'sleep 100' } }] } })
+  if (text.includes('LIMITS')) out({ type: 'rate_limit_event', rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.25, resetsAt: 1 }, seven_day: { utilization: 0.6, resetsAt: 2 } } } })
   if (text.includes('ASK')) {
     pending.set('perm-1', true)
     return out({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'curl example.com' } } })

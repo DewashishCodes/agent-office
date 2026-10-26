@@ -15,6 +15,7 @@ export default function Settings({ project, onClose, reload }) {
     question: String(s.question_timeout_min ?? 30),
     digest: s.digest_hour == null ? '' : String(s.digest_hour),
     approveSmall: s.plan_approval_small !== false,
+    issues: s.github_issues !== false,
     protectedPaths: (s.protected_paths || []).join('\n'),
     bash: s.auto_allow_bash || '',
   })
@@ -30,7 +31,7 @@ export default function Settings({ project, onClose, reload }) {
           name: f.name.trim(),
           settings: {
             project_daily_token_budget: Number(f.budget), project_daily_cost_budget: f.cost === '' ? null : Number(f.cost), permission_timeout_min: Number(f.perm), question_timeout_min: Number(f.question),
-            digest_hour: f.digest === '' ? null : Number(f.digest), plan_approval_small: f.approveSmall,
+            digest_hour: f.digest === '' ? null : Number(f.digest), plan_approval_small: f.approveSmall, github_issues: f.issues,
             protected_paths: lines(f.protectedPaths), auto_allow_bash: f.bash,
           },
         },
@@ -47,20 +48,23 @@ export default function Settings({ project, onClose, reload }) {
         <p className="small"><a className="btn small" href="/api/backup" download>Download backup</a> <span className="muted">Every project, order, task and run in one file.</span></p>
         <label className="field"><span>Name</span><input value={f.name} onChange={set('name')} required /></label>
         <div className="grid2">
-          <label className="field"><span>Daily token budget for the project</span><input type="number" min="0" step="1000000" value={f.budget} onChange={set('budget')} required /></label>
-          <label className="field"><span>Daily cost budget in dollars (empty = no limit)</span><input type="number" min="0" step="0.5" value={f.cost} onChange={set('cost')} /></label>
-          <label className="field"><span>Morning digest hour (0 to 23, empty = off)</span><input type="number" min="0" max="23" value={f.digest} onChange={set('digest')} /></label>
-          <label className="field"><span>Deny unanswered permission prompts after (minutes)</span><input type="number" min="1" value={f.perm} onChange={set('perm')} required /></label>
-          <label className="field"><span>Agents stop waiting for your answer after (minutes)</span><input type="number" min="1" value={f.question} onChange={set('question')} required /></label>
+          <label className="field"><span>Daily token budget for the project</span><input type="number" min="0" step="1000000" value={f.budget} onChange={set('budget')} required /><small className="hint">Past it, no new task starts until midnight. Running tasks finish.</small></label>
+          <label className="field"><span>Daily cost budget in dollars (empty = no limit)</span><input type="number" min="0" step="0.5" value={f.cost} onChange={set('cost')} /><small className="hint">Same, counted in dollars across every run of the day.</small></label>
+          <label className="field"><span>Morning digest hour (0 to 23, empty = off)</span><input type="number" min="0" max="23" value={f.digest} onChange={set('digest')} /><small className="hint">A notification with what got done and what waits for you.</small></label>
+          <label className="field"><span>Deny unanswered permission prompts after (minutes)</span><input type="number" min="1" value={f.perm} onChange={set('perm')} required /><small className="hint">The agent is told no and carries on without it.</small></label>
+          <label className="field"><span>Agents stop waiting for your answer after (minutes)</span><input type="number" min="1" value={f.question} onChange={set('question')} required /><small className="hint">The agent then decides on its own and says what it chose.</small></label>
         </div>
-        <label className="check"><input type="checkbox" checked={f.approveSmall} onChange={set('approveSmall')} /> Small (S) plans also need my approval</label>
+        <label className="check"><input type="checkbox" checked={f.approveSmall} onChange={set('approveSmall')} /> Small (S) plans also need my approval (off: they start right away)</label>
+        <label className="check"><input type="checkbox" checked={f.issues} onChange={set('issues')} /> Open a GitHub issue for every approved task (off: tasks live only here)</label>
         <label className="field"><span>Protected paths: no agent may read or change these (one glob per line)</span>
           <textarea rows="5" className="mono" value={f.protectedPaths} onChange={set('protectedPaths')} />
+          <small className="hint">A task that touches one fails its check and comes back to you.</small>
         </label>
         <details>
           <summary className="small">Advanced: commands agents may run without asking</summary>
           <label className="field"><span>Regular expression each part of a Bash command must match</span>
             <textarea rows="4" className="mono" value={f.bash} onChange={set('bash')} spellCheck="false" />
+            <small className="hint">Commands matching this run without asking. Anything else waits for you in Needs you.</small>
           </label>
         </details>
         <div className="actions">

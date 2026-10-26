@@ -23,7 +23,7 @@ const SCREENS = {
   Login: { onDone() {} },
   Projects: { projects: [project], current: 1, reload() {}, onPick() {} },
   Home: ctx, Command: { ...ctx, running: 0 }, Board: ctx, Team: ctx, AgentProfile: { ...ctx, id: 1 },
-  Inbox: ctx, Vault: ctx, Onboarding: ctx,
+  Inbox: ctx, Vault: ctx, Onboarding: ctx, Activity: ctx,
 }
 
 const vite = await createServer({ root: 'web', configFile: false, logLevel: 'error', server: { middlewareMode: true, hmr: false }, appType: 'custom', ssr: { noExternal: ['@xterm/xterm', '@xterm/addon-fit'] } })

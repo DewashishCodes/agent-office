@@ -123,7 +123,7 @@ function Station({ a, set, bubble, selected, onSelect }) {
             onError={e => { if (!e.currentTarget.dataset.fell) { e.currentTarget.dataset.fell = 1; e.currentTarget.src = clawdUrl('idle') } }} />
         </span>
         <span className="desk" aria-hidden="true" />
-        <span className="tag"><i className="light" />{a.name}</span>
+        <span className="tag" title={a.name}><i className="light" /><span className="clip">{a.name}</span></span>
         <span className="doing clip">{doing}{r?.status === 'running' && r.started_at && <> <Elapsed since={r.started_at} /></>}</span>
       </button>
     </li>
